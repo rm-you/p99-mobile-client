@@ -3,10 +3,7 @@ use p99_logger_client::client::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Mutex,
-    },
+    sync::Mutex,
     thread::{self, JoinHandle},
 };
 
@@ -53,7 +50,6 @@ struct Worker {
 pub struct SessionController {
     worker: Mutex<Option<Worker>>,
     cancellation: Mutex<Option<CancellationToken>>,
-    paused: AtomicBool,
 }
 
 impl SessionController {
@@ -95,10 +91,6 @@ impl SessionController {
             .cancellation
             .lock()
             .map_err(|_| "Session state unavailable")? = Some(cancel.clone());
-        if self.paused.load(Ordering::SeqCst) {
-            cancel.cancel();
-            return Err("Bring the app to the foreground before connecting.".into());
-        }
         let worker_cancel = cancel.clone();
         let worker = thread::Builder::new()
             .name("p99-session".into())
@@ -124,15 +116,6 @@ impl SessionController {
             if let Some(token) = token.as_ref() {
                 token.cancel();
             }
-        }
-    }
-
-    /// Track native foreground state, including cancellation during session startup.
-    #[cfg(any(mobile, test))]
-    pub fn set_foreground(&self, foreground: bool) {
-        self.paused.store(!foreground, Ordering::SeqCst);
-        if !foreground {
-            self.cancel();
         }
     }
 
@@ -193,16 +176,5 @@ mod tests {
         let _busy = controller.worker.lock().unwrap();
         controller.cancel();
         assert!(token.is_cancelled());
-    }
-
-    #[test]
-    fn backgrounded_app_cannot_start_a_session() {
-        let controller = SessionController::default();
-        controller.set_foreground(false);
-        assert!(controller
-            .start(request(), |_| panic!("no session while paused"))
-            .unwrap_err()
-            .contains("foreground"));
-        assert!(controller.worker.lock().unwrap().is_none());
     }
 }

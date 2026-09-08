@@ -39,10 +39,12 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![connect, disconnect])
         .build(tauri::generate_context!())
         .expect("Unable to initialize P99 Mobile")
-        .run(|app, event| match event {
-            tauri::RunEvent::ExitRequested {
+        .run(|app, event| {
+            // Focus and visibility changes leave the network worker running.
+            if let tauri::RunEvent::ExitRequested {
                 code: None, api, ..
-            } => {
+            } = event
+            {
                 api.prevent_exit();
                 let controller = app.state::<Arc<SessionController>>().inner().clone();
                 controller.cancel();
@@ -52,14 +54,5 @@ pub fn run() {
                     app.exit(0);
                 });
             }
-            #[cfg(mobile)]
-            tauri::RunEvent::WindowEvent {
-                event: tauri::WindowEvent::Focused(foreground),
-                ..
-            } => {
-                app.state::<Arc<SessionController>>()
-                    .set_foreground(foreground);
-            }
-            _ => (),
         });
 }

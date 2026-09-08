@@ -104,19 +104,6 @@ export default function App() {
   }
 
   useEffect(() => {
-    const background = () => {
-      if (document.hidden && native && activeRef.current) {
-        setDiagnostic("Disconnected when the app moved to the background.");
-        void disconnect();
-      }
-    };
-    document.addEventListener("visibilitychange", background);
-    return () => {
-      document.removeEventListener("visibilitychange", background);
-    };
-  }, []);
-
-  useEffect(() => {
     if (follow && list.current)
       list.current.scrollTop = list.current.scrollHeight;
   }, [records, channel, query, follow, tab]);
@@ -339,7 +326,8 @@ export default function App() {
             <span>◇</span>
             <p>
               Credentials stay in memory for this session. This first version
-              does not save your password. Keep the app open to stay connected.
+              does not save your password. We try to stay connected in the
+              background, but your phone may pause or stop the app.
             </p>
           </div>
         </section>

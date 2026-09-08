@@ -22,10 +22,20 @@ credentials while the session is running so it can reconnect. Disconnect stops
 that worker before another session can start. There is no password storage,
 chat export, or message sending yet.
 
-Keep the app in the foreground. Moving it to the background requests a
-disconnect; this is not an always-on background logger. Mobile operating systems
-can suspend or kill an app before shutdown finishes. Resume and connect again
-when ready. Device lifecycle behavior still needs testing on both platforms.
+Background connections are best effort. Switching apps, locking the screen, or
+losing window focus does not deliberately disconnect the session or cancel a
+connection attempt. The existing network worker and retry loop keep running
+while the OS permits execution. Use **Disconnect** to end a session; explicit
+app exit also requests shutdown.
+
+The OS may suspend networking or terminate the app. If the process survives,
+the same worker can resume and retry a lost connection when allowed to run.
+After process termination, reopen the app and enter your credentials again.
+This version does not register an Android foreground service or request extra
+iOS background execution time. Background duration and lifecycle behavior still
+need testing on both platforms; continuous logging is not guaranteed. See the
+[Android process lifecycle](https://developer.android.com/guide/components/activities/process-lifecycle)
+and [iOS background execution documentation](https://developer.apple.com/documentation/uikit/extending-your-app-s-background-execution-time).
 
 ## Development
 

@@ -31,7 +31,10 @@ beforeEach(() => {
   native.invoke.mockReset().mockResolvedValue(undefined);
   native.channels.length = 0;
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 async function connect() {
   render(<App />);
@@ -124,6 +127,38 @@ describe("connection and chat", () => {
     fireEvent.click(screen.getByRole("button", { name: "guild" }));
     expect(screen.queryByText("Selling <script>not HTML</script>")).toBeNull();
     expect(screen.getByText("Guild example")).toBeTruthy();
+  });
+
+  it("keeps the same session across background and foreground transitions", async () => {
+    await connect();
+    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+    fireEvent(document, new Event("visibilitychange"));
+    fireEvent(window, new Event("blur"));
+    act(() => {
+      native.channels[0].onmessage({
+        type: "client",
+        data: {
+          type: "record",
+          data: {
+            type: "chat",
+            timestamp: "2026-01-01T12:00:00Z",
+            server: "Test Server",
+            character: "ExampleCharacter",
+            zone: "ecommons",
+            session_id: "synthetic",
+            message_id: 1,
+            channel_name: "guild",
+            text: "Background message",
+          },
+        },
+      });
+    });
+    hidden.mockReturnValue(false);
+    fireEvent(document, new Event("visibilitychange"));
+    fireEvent(window, new Event("focus"));
+    expect(screen.getByText("Background message")).toBeTruthy();
+    expect(native.invoke).toHaveBeenCalledTimes(1);
+    expect(native.channels).toHaveLength(1);
   });
 
   it("requests native shutdown before allowing a new connection", async () => {
