@@ -1,0 +1,17 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/schemas/
+.local/
+.env
+.env.*
+config.json
+*.jsonl
+*.log
+*.pcap
+*.pcapng
+*.keystore
+*.jks
+*.p12
+*.mobileprovision
+.DS_Store
