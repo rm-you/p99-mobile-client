@@ -22,8 +22,9 @@ pub struct VaultStatus {
 pub struct SecureLogin<R: Runtime> {
     #[cfg(mobile)]
     handle: tauri::plugin::PluginHandle<R>,
+    // The desktop stub owns no runtime, so it must not inherit R's Send/Sync bounds.
     #[cfg(not(mobile))]
-    marker: std::marker::PhantomData<R>,
+    marker: std::marker::PhantomData<fn() -> R>,
 }
 
 impl<R: Runtime> SecureLogin<R> {
