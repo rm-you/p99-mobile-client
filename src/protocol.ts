@@ -13,6 +13,9 @@ export interface ItemLink {
   start: number;
   end: number;
   item_id: number;
+  /** Inclusive/exclusive UTF-8 byte offsets in the decoded message text. */
+  text_start?: number;
+  text_end?: number;
 }
 export interface Message {
   text: string;

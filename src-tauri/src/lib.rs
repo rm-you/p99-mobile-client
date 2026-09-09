@@ -1,5 +1,7 @@
 mod session;
 mod settings;
+mod wiki;
+use tauri_plugin_opener::OpenerExt;
 
 use session::{AppEvent, ConnectRequest, SessionController};
 use settings::{Settings, SettingsStore};
@@ -101,6 +103,23 @@ fn save_settings(settings: Settings, store: State<'_, SettingsStore>) -> Result<
     store.save(settings)
 }
 
+/// Look up public item details without passing any account or chat context.
+#[tauri::command]
+async fn item_details(
+    name: String,
+    wiki: State<'_, wiki::WikiClient>,
+) -> Result<wiki::ItemDetails, String> {
+    wiki.lookup(&name).await
+}
+
+/// Open only a Wiki article in the system browser, outside the privileged app view.
+#[tauri::command]
+async fn open_item_wiki(name: String, app: tauri::AppHandle) -> Result<(), String> {
+    app.opener()
+        .open_url(wiki::page_url(&name)?, None::<&str>)
+        .map_err(|_| "Could not open the Wiki in your browser.".into())
+}
+
 /// Wait for the old socket to close before the UI enables another connection.
 #[tauri::command]
 async fn disconnect(state: State<'_, Arc<SessionController>>) -> Result<(), String> {
@@ -114,6 +133,8 @@ async fn disconnect(state: State<'_, Arc<SessionController>>) -> Result<(), Stri
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_secure_login::init())
+        .plugin(tauri_plugin_opener::init())
+        .manage(wiki::WikiClient::default())
         .manage(Arc::new(SessionController::default()))
         .setup(|app| {
             app.manage(SettingsStore::new(
@@ -129,7 +150,9 @@ pub fn run() {
             save_credentials,
             forget_credentials,
             load_settings,
-            save_settings
+            save_settings,
+            item_details,
+            open_item_wiki
         ])
         .build(tauri::generate_context!())
         .expect("Unable to initialize P99 Mobile")

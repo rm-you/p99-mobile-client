@@ -16,9 +16,16 @@ Validation:
 
 ## 2. Improve chat presentation and item links
 
-Add clearer formatting and channel colors. Make item links tappable and open
-an item detail modal populated from the P99 Wiki, with loading/error states,
-caching, and a link to the source page.
+Implemented: channel colors, tappable item links, and a P99 Wiki detail modal
+with loading/error states, retry, a bounded cache, and a source-page button.
+The mobile lockfile includes the published decoder offsets for inline links.
+The UI uses a compact neutral layout, a channel selector, and text navigation.
+Wiki HTML is reduced to item-card text by Rust before reaching the UI.
+Android emulator validation covers real Wiki lookup, caching, inline and legacy
+item buttons, modal dismissal/focus restoration, and opening the source browser.
+
+Remaining:
+- Validate the item flow on physical Android and iOS devices.
 
 ## 3. Improve background connection reliability
 

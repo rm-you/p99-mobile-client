@@ -12,9 +12,15 @@ password, and provide the name of an existing character. The character joins
 the zone where you last left them. Log out of the graphical game client first.
 
 The chat view receives all communication channels and lets you filter by
-channel or search the most recent 1,500 messages. Item link labels, IDs, and
-original link bodies remain available in the received records. Messages render
-as text, never HTML. Clearing the view removes its retained messages.
+channel or search the most recent 1,500 messages. A single selector filters channels,
+with subtle colors on each message's channel label.
+Tap an item link to open its stats from the P99 Wiki, or open its source page in
+your browser. Lookups use the item name, with loading, retry, and unavailable-page
+states; account credentials and chat messages are never sent to the Wiki.
+Successful lookups stay in memory for up to 24 hours (128 items). The app extracts
+plain text from the Wiki item card and never renders remote HTML. Item link IDs
+and original link bodies remain available in the received records. Clearing the
+view removes its retained messages.
 
 Server, character, channel filter, and follow-latest preferences are saved on
 this device. Account credentials are saved only when you choose **Save login
@@ -108,6 +114,11 @@ credential files.
   validation, and serial session shutdown.
 - `src-tauri/src/lib.rs`: native commands and application lifecycle callbacks.
 - `src-tauri/src/settings.rs`: validated, atomic writes of nonsecret preferences.
+- `src-tauri/src/wiki/`: bounded HTTPS item lookups, text extraction, and cache.
+  See its [TLS notes](src-tauri/src/wiki/README.md) for the Wiki's incomplete
+  certificate chain and the supplemental public intermediate.
+- `src/itemText.ts`: converts decoded UTF-8 item ranges for inline rendering.
+  Records without these ranges retain separate tappable item buttons.
 - `src-tauri/secure-login/`: native Keystore/Keychain integration. Its Rust API
   exposes no credential-reading command to the webview. Android key use is bound
   to the authenticated `CryptoObject`; iOS access is enforced by Keychain ACLs.
@@ -117,7 +128,10 @@ credential files.
 The Rust manifest depends on the library's `main` branch with its CLI feature
 disabled. `Cargo.lock` records the exact resolved commit. To adopt a newer
 library revision deliberately, run `cargo update -p p99-logger-client` inside
-`src-tauri`, then review and commit the lockfile change.
+`src-tauri`, then review and commit the lockfile change. Inline links require the
+logger's additive `text_start` / `text_end` fields; `start` / `end` describe the
+original wire bytes and must not be used to slice decoded text. The locked library
+supplies these fields; older records without them retain separate item buttons.
 
 ```sh
 npm run build

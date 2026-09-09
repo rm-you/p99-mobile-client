@@ -74,7 +74,7 @@ async function connect() {
       }),
     ),
   );
-  await screen.findByRole("heading", { name: "Conversation" });
+  await screen.findByRole("heading", { name: "Chat" });
 }
 
 describe("connection and chat", () => {
@@ -135,9 +135,11 @@ describe("connection and chat", () => {
       });
     });
     expect(screen.getByText("Selling <script>not HTML</script>")).toBeTruthy();
-    expect(screen.getByText("◇ Example item")).toBeTruthy();
+    expect(screen.getByText("Example item")).toBeTruthy();
     expect(document.querySelector(".messages script")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "guild" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Chat channel" }), {
+      target: { value: "guild" },
+    });
     expect(screen.queryByText("Selling <script>not HTML</script>")).toBeNull();
     expect(screen.getByText("Guild example")).toBeTruthy();
   });
@@ -218,7 +220,7 @@ describe("connection and chat", () => {
       native.invoke.mock.calls.some(([name]) => name === "connect_saved"),
     ).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: /Unlock and connect/ }));
-    await screen.findByRole("heading", { name: "Conversation" });
+    await screen.findByRole("heading", { name: "Chat" });
     expect(native.invoke).toHaveBeenCalledWith(
       "connect_saved",
       expect.objectContaining({
@@ -232,10 +234,12 @@ describe("connection and chat", () => {
       )[0][1],
     ).not.toHaveProperty("request");
     expect(
-      screen
-        .getByRole("button", { name: "guild" })
-        .getAttribute("aria-pressed"),
-    ).toBe("true");
+      (
+        screen.getByRole("combobox", {
+          name: "Chat channel",
+        }) as HTMLSelectElement
+      ).value,
+    ).toBe("guild");
   });
 
   it("saves credentials separately, clears both inputs, and allows forgetting", async () => {

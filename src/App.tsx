@@ -7,8 +7,11 @@ import type {
   ChatRecord,
   ConnectRequest,
   SessionStatus,
+  ItemLink,
 } from "./protocol";
 import "./App.css";
+import ItemModal from "./ItemModal";
+import MessageRow from "./MessageRow";
 
 const initialSettings: ConnectRequest = {
   user: "",
@@ -30,48 +33,6 @@ interface VaultStatus {
 const channelLabel = (name: string) =>
   name === "ooc" ? "OOC" : name.replace(/_/g, " ");
 
-function MessageRow({ record }: { record: ChatRecord }) {
-  const links = [
-    ...(record.item_links ?? []),
-    ...(record.arguments?.flatMap((argument) => argument.item_links ?? []) ??
-      []),
-  ];
-  return (
-    <article className={`message channel-${record.channel_name ?? "system"}`}>
-      <div className="message-meta">
-        <span className="channel-name">
-          {channelLabel(record.channel_name ?? "system")}
-        </span>
-        <strong>
-          {record.sender ||
-            (record.type === "decode_error" ? "Notice" : "Norrath")}
-        </strong>
-        {record.target && <span className="recipient">to {record.target}</span>}
-        <time dateTime={record.timestamp}>
-          {new Date(record.timestamp).toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
-        </time>
-      </div>
-      <p>{recordText(record)}</p>
-      {links.length > 0 && (
-        <div className="item-links">
-          {links.map((link, index) => (
-            <span
-              className="item-link"
-              key={`${link.item_id}-${index}`}
-              title={`Item ${link.item_id} · ${link.body}`}
-            >
-              ◇ {link.text}
-            </span>
-          ))}
-        </div>
-      )}
-    </article>
-  );
-}
-
 export default function App() {
   const [settings, setSettings] = useState(initialSettings);
   const [ready, setReady] = useState(false);
@@ -85,6 +46,7 @@ export default function App() {
   const vaultBusyRef = useRef(false);
   const saveQueue = useRef(Promise.resolve());
   const [tab, setTab] = useState<"chat" | "settings">("settings");
+  const [selectedItem, setSelectedItem] = useState<ItemLink | null>(null);
   const [records, setRecords] = useState<ChatRecord[]>([]);
   const [channel, setChannel] = useState("all");
   const [status, setStatus] = useState<SessionStatus | null>(null);
@@ -320,30 +282,22 @@ export default function App() {
   return (
     <main className="app-shell">
       <header className="app-header">
-        <div className="brand-mark" aria-hidden="true">
-          ✦
-        </div>
-        <div>
-          <h1>
-            P99 <span>Mobile</span>
-          </h1>
-          <p>Your window into Norrath</p>
+        <div className="header-title">
+          <h1>P99 Mobile</h1>
+          {tab === "chat" && settings.character && (
+            <p className="session-context">
+              {settings.character} · P99{" "}
+              {settings.server === "green" ? "Green" : "Blue"}
+              {status?.zone ? ` · ${status.zone}` : ""}
+            </p>
+          )}
         </div>
         <span
-          className={`connection-badge ${status?.state === "connected" && active ? "online" : ""}`}
+          className={`connection-status ${status?.state === "connected" && active ? "online" : ""}`}
         >
-          <i />
           {stateLabel}
         </span>
       </header>
-      <section className="character-bar">
-        <div>
-          <span className={`server-dot ${settings.server}`} />
-          <strong>{settings.character || "No character selected"}</strong>
-          <span className="server-name">{settings.server}</span>
-        </div>
-        <span>{status?.zone || "Select your character to begin"}</span>
-      </section>
       {error && (
         <div role="alert" className="notice error">
           {error}
@@ -357,17 +311,10 @@ export default function App() {
 
       {tab === "settings" ? (
         <section className="settings-view">
-          <div className="section-heading">
-            <span className="eyebrow">CONNECTION</span>
-            <h2>Return to Norrath</h2>
-            <p>
-              Connect an existing character to read chat from their current
-              zone.
-            </p>
-          </div>
+          <h2>Connection</h2>
           <form onSubmit={connect}>
             <fieldset disabled={active || stopping || vaultBusy || !ready}>
-              <legend>Choose your server</legend>
+              <legend>Server</legend>
               <div className="server-picker">
                 {(["green", "blue"] as const).map((server) => (
                   <button
@@ -379,7 +326,6 @@ export default function App() {
                       setSettings((previous) => ({ ...previous, server }))
                     }
                   >
-                    <span className={`server-dot ${server}`} />
                     P99 {server}
                   </button>
                 ))}
@@ -452,9 +398,8 @@ export default function App() {
                   )}
                   {!vault.available && (
                     <p className="storage-hint">
-                      To save a login, enable a device lock on Android 11+ or
-                      iOS, or enroll a strong biometric on older Android
-                      versions. You can also connect without saving.
+                      Enable a supported device lock or biometric to save your
+                      login. You can also connect without saving.
                     </p>
                   )}
                   {vault.saved && (
@@ -521,26 +466,20 @@ export default function App() {
                   ? "Loading settings…"
                   : useSaved
                     ? "Unlock and connect"
-                    : "Connect to character"}{" "}
-                <span>→</span>
+                    : "Connect to character"}
               </button>
             )}
           </form>
-          <div className="quiet-note">
-            <span>◇</span>
-            <p>
-              Settings are saved on this device. Saving your login is optional
-              and uses your device’s secure storage. The active session can
-              reconnect without unlocking again. We try to stay connected in the
-              background, but your phone may pause or stop the app.
-            </p>
-          </div>
+          <p className="settings-note">
+            Settings save automatically. Saving your login is optional. Your
+            phone may pause connections in the background.
+          </p>
         </section>
       ) : (
         <section className="chat-view">
           <div className="chat-toolbar">
-            <h2>Conversation</h2>
-            <span>{records.length.toLocaleString()} retained</span>
+            <h2>Chat</h2>
+            <span>{records.length.toLocaleString()} messages</span>
             <button
               className="text-button"
               type="button"
@@ -550,29 +489,26 @@ export default function App() {
               Clear
             </button>
           </div>
-          <div className="channels" aria-label="Chat channel">
-            {CHANNELS.map((name) => (
-              <button
-                key={name}
-                type="button"
-                className={channel === name ? "selected" : ""}
-                aria-pressed={channel === name}
-                onClick={() => setChannel(name)}
-              >
-                {channelLabel(name)}
-              </button>
-            ))}
-          </div>
-          <label className="search-label">
-            <span aria-hidden="true">⌕</span>
+          <div className="chat-filters">
+            <select
+              aria-label="Chat channel"
+              value={channel}
+              onChange={(event) => setChannel(event.target.value)}
+            >
+              {CHANNELS.map((name) => (
+                <option key={name} value={name}>
+                  {name === "all" ? "All channels" : channelLabel(name)}
+                </option>
+              ))}
+            </select>
             <input
               type="search"
               aria-label="Search retained messages"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search messages or players"
+              placeholder="Search messages"
             />
-          </label>
+          </div>
           <div
             className="messages"
             ref={list}
@@ -592,17 +528,17 @@ export default function App() {
                 <MessageRow
                   key={`${record.session_id}-${record.message_id}`}
                   record={record}
+                  onItem={setSelectedItem}
                 />
               ))
             ) : (
               <div className="empty-state">
-                <div aria-hidden="true">✧</div>
                 <h3>
                   {records.length
                     ? "No matching messages"
                     : active
-                      ? "Listening to Norrath"
-                      : "The conversation awaits"}
+                      ? "Waiting for messages"
+                      : "No messages yet"}
                 </h3>
                 <p>
                   {records.length
@@ -616,7 +552,7 @@ export default function App() {
                     className="text-button"
                     onClick={() => setTab("settings")}
                   >
-                    Set up connection →
+                    Set up connection
                   </button>
                 )}
               </div>
@@ -624,39 +560,42 @@ export default function App() {
           </div>
           {!follow && visible.length > 0 && (
             <button className="latest-button" onClick={() => setFollow(true)}>
-              ↓ Latest messages
+              Latest messages
             </button>
           )}
-          <div className="chat-footer">
-            <span title={diagnostic}>
-              {active
-                ? diagnostic || "Waiting for server traffic…"
-                : "Offline · Messages remain until cleared or the app closes"}
-            </span>
-            {active && (
-              <button
-                className="text-button"
-                disabled={stopping}
-                onClick={() => void disconnect()}
-              >
-                Disconnect
-              </button>
-            )}
-          </div>
+          {(active || diagnostic) && (
+            <div className="chat-footer">
+              <span title={diagnostic}>{diagnostic}</span>
+              {active && (
+                <button
+                  className="text-button"
+                  disabled={stopping}
+                  onClick={() => void disconnect()}
+                >
+                  Disconnect
+                </button>
+              )}
+            </div>
+          )}
         </section>
+      )}
+      {selectedItem && (
+        <ItemModal item={selectedItem} onClose={() => setSelectedItem(null)} />
       )}
       <nav className="bottom-nav" aria-label="Main navigation">
         <button
           className={tab === "chat" ? "selected" : ""}
+          aria-current={tab === "chat" ? "page" : undefined}
           onClick={() => setTab("chat")}
         >
-          <span aria-hidden="true">☷</span>Chat
+          Chat
         </button>
         <button
           className={tab === "settings" ? "selected" : ""}
+          aria-current={tab === "settings" ? "page" : undefined}
           onClick={() => setTab("settings")}
         >
-          <span aria-hidden="true">⚙</span>Connection
+          Connection
         </button>
       </nav>
     </main>
