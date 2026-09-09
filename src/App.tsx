@@ -34,7 +34,6 @@ const initialSettings: ConnectRequest = {
 interface SavedSettings {
   version: number;
   server: ConnectRequest["server"];
-  character: string;
   channels: ChatChannel[];
   follow: boolean;
 }
@@ -107,7 +106,6 @@ export default function App() {
         setSettings((previous) => ({
           ...previous,
           server: value.server,
-          character: value.character,
         }));
         setChannels(value.channels);
         setFollow(value.follow);
@@ -137,7 +135,6 @@ export default function App() {
       const preferences: SavedSettings = {
         version: 2,
         server: settings.server,
-        character: settings.character,
         channels,
         follow,
       };
@@ -150,15 +147,7 @@ export default function App() {
         });
     }, 250);
     return () => clearTimeout(timer);
-  }, [
-    native,
-    ready,
-    persist,
-    settings.server,
-    settings.character,
-    channels,
-    follow,
-  ]);
+  }, [native, ready, persist, settings.server, channels, follow]);
 
   function editProfile(profile: SavedProfile | "legacy" | null) {
     setEditing(profile);
@@ -166,6 +155,7 @@ export default function App() {
       ...previous,
       user: "",
       pass: "",
+      character: "",
       ...(profile && profile !== "legacy"
         ? { character: profile.character, server: profile.server }
         : {}),
@@ -336,8 +326,15 @@ export default function App() {
         setStatus((previous) =>
           previous ? { ...previous, state: "stopped" } : null,
         );
-        if (event.data.error)
+        if (event.data.error === "invalid_credentials") {
+          setRetrying(false);
+          setTab("settings");
+          setError(
+            "The login account or password was rejected. Check your login details and try again.",
+          );
+        } else if (event.data.error) {
           setError("Connection ended. Please try connecting again.");
+        }
         return;
       }
       const message = event.data;

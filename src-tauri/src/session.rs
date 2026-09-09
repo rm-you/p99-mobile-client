@@ -1,5 +1,5 @@
 use p99_logger_client::client::{
-    CancellationToken, Client, ClientConfig, ClientEvent, ClientIdentity, RunOptions,
+    CancellationToken, Client, ClientConfig, ClientEvent, ClientIdentity, LoginError, RunOptions,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -30,7 +30,24 @@ pub struct ConnectRequest {
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum AppEvent {
     Client(ClientEvent),
-    Finished { error: Option<String> },
+    Finished { error: Option<SessionFailure> },
+}
+
+/// Stable UI failure codes; transport details and credentials stay out of the webview.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionFailure {
+    InvalidCredentials,
+    ConnectionLost,
+}
+
+impl SessionFailure {
+    fn from_error(error: &anyhow::Error) -> Self {
+        match error.downcast_ref::<LoginError>() {
+            Some(LoginError::InvalidCredentials) => Self::InvalidCredentials,
+            None => Self::ConnectionLost,
+        }
+    }
 }
 
 struct Worker {
@@ -92,7 +109,7 @@ impl SessionController {
                     send(AppEvent::Client(event)).map_err(anyhow::Error::msg)
                 });
                 let _ = send(AppEvent::Finished {
-                    error: outcome.err().map(|error| error.to_string()),
+                    error: outcome.err().as_ref().map(SessionFailure::from_error),
                 });
             })
             .map_err(|error| error.to_string())?;
@@ -159,6 +176,27 @@ mod tests {
             .unwrap_err();
         assert!(!error.contains("EXAMPLE_ACCOUNT") && !error.contains("EXAMPLE_PASSWORD"));
         assert!(controller.worker.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn credential_failure_is_typed_and_other_errors_stay_generic() {
+        let rejected = anyhow::Error::new(LoginError::InvalidCredentials).context("login failed");
+        assert_eq!(
+            SessionFailure::from_error(&rejected),
+            SessionFailure::InvalidCredentials
+        );
+        let wire = serde_json::to_value(AppEvent::Finished {
+            error: Some(SessionFailure::from_error(&rejected)),
+        })
+        .unwrap();
+        assert_eq!(wire["data"]["error"], "invalid_credentials");
+        // An arbitrary diagnostic string must never be treated as a credential verdict.
+        let unrelated = anyhow::anyhow!("invalid_credentials: SYNTHETIC_PASSWORD");
+        let wire = serde_json::to_string(&AppEvent::Finished {
+            error: Some(SessionFailure::from_error(&unrelated)),
+        })
+        .unwrap();
+        assert!(wire.contains("connection_lost") && !wire.contains("SYNTHETIC_PASSWORD"));
     }
 
     #[test]

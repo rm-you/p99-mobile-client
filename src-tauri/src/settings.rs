@@ -36,7 +36,9 @@ impl ChatChannel {
 pub struct Settings {
     pub version: u8,
     pub server: Server,
-    pub character: String,
+    // Read old preferences for compatibility, but character names belong to saved profiles.
+    #[serde(default, rename = "character", skip_serializing)]
+    _legacy_character: String,
     pub channels: Vec<ChatChannel>,
     // Accept the retired field in old settings, but never persist UI expansion.
     #[serde(default, rename = "filters_open", skip_serializing)]
@@ -48,7 +50,7 @@ impl Default for Settings {
         Self {
             version: 2,
             server: Server::Green,
-            character: String::new(),
+            _legacy_character: String::new(),
             channels: ChatChannel::ALL.to_vec(),
             _legacy_filters_open: false,
             follow: true,
@@ -58,8 +60,8 @@ impl Default for Settings {
 impl Settings {
     fn validate(&self) -> Result<(), String> {
         if self.version != 2
-            || self.character.len() >= 64
-            || self.character.contains('\0')
+            || self._legacy_character.len() >= 64
+            || self._legacy_character.contains('\0')
             || self
                 .channels
                 .iter()
@@ -111,7 +113,7 @@ impl StoredSettings {
                 };
                 Settings {
                     server: old.server,
-                    character: old.character,
+                    _legacy_character: old.character,
                     channels,
                     follow: old.follow,
                     ..Settings::default()
@@ -186,7 +188,7 @@ mod tests {
         let store = SettingsStore::new(path.clone());
         assert_eq!(store.load().unwrap().channels.len(), ChatChannel::ALL.len());
         let mut settings = Settings {
-            character: "ExampleCharacter".into(),
+            _legacy_character: "ExampleCharacter".into(),
             channels: vec![ChatChannel::Guild, ChatChannel::Tell],
             _legacy_filters_open: true,
             ..Settings::default()
@@ -197,8 +199,31 @@ mod tests {
         let reloaded = SettingsStore::new(path).load().unwrap();
         assert!(reloaded.channels == [ChatChannel::Auction, ChatChannel::Ooc]);
         assert!(!reloaded._legacy_filters_open);
-        assert_eq!(reloaded.character, "ExampleCharacter");
+        assert!(reloaded._legacy_character.is_empty());
     }
+    #[test]
+    fn cached_character_is_not_returned_to_the_form_or_saved_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let store = SettingsStore::new(path.clone());
+        for version in [1, 2] {
+            let mut old = serde_json::json!({"version": version, "server": "blue", "character": "PreviousCharacter", "follow": true});
+            if version == 1 {
+                old["channel"] = serde_json::json!("guild");
+            } else {
+                old["channels"] = serde_json::json!(["guild"]);
+            }
+            fs::write(&path, serde_json::to_vec(&old).unwrap()).unwrap();
+            let settings = store.load().unwrap();
+            let returned = serde_json::to_value(&settings).unwrap();
+            assert!(returned.get("character").is_none());
+            store.save(settings).unwrap();
+            assert!(!fs::read_to_string(&path)
+                .unwrap()
+                .contains("PreviousCharacter"));
+        }
+    }
+
     #[test]
     fn secret_fields_and_invalid_values_are_rejected() {
         let value = serde_json::to_value(Settings::default()).unwrap();
@@ -227,7 +252,7 @@ mod tests {
             let settings = store.load().unwrap();
             assert_eq!(settings.version, 2);
             assert!(matches!(settings.server, Server::Blue));
-            assert_eq!(settings.character, "ExampleCharacter");
+            assert_eq!(settings._legacy_character, "ExampleCharacter");
             assert!(!settings.follow);
             assert!(!settings._legacy_filters_open);
             assert!(
@@ -281,13 +306,14 @@ mod tests {
         let migrated = store.load().unwrap();
         assert!(migrated.channels == [ChatChannel::Guild, ChatChannel::Ooc]);
         assert!(matches!(migrated.server, Server::Blue));
-        assert_eq!(migrated.character, "ExampleCharacter");
+        assert_eq!(migrated._legacy_character, "ExampleCharacter");
         assert!(migrated._legacy_filters_open);
         assert!(!migrated.follow);
         store.save(migrated).unwrap();
         let saved = fs::read_to_string(&store.path).unwrap();
         assert!(!saved.contains("group") && !saved.contains("raid"));
         assert!(!saved.contains("filters_open"));
+        assert!(!saved.contains("character") && !saved.contains("ExampleCharacter"));
         for channel in [ChatChannel::Group, ChatChannel::Raid] {
             assert!(store
                 .save(Settings {

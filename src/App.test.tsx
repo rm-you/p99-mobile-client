@@ -166,7 +166,7 @@ describe("connection and chat", () => {
     act(() =>
       native.channels[0].onmessage({
         type: "finished",
-        data: { error: "Unexpected opcode 0x1234: deadbeef" },
+        data: { error: "connection_lost" },
       }),
     );
     expect(health().textContent).toBe("Disconnected");
@@ -174,6 +174,30 @@ describe("connection and chat", () => {
       "Connection ended. Please try connecting again.",
     );
     expect(document.body.innerHTML).not.toMatch(/0x1234|deadbeef|12345|67890/);
+  });
+
+  it("shows rejected credentials and returns to the connection form without restarting", async () => {
+    await connect(true);
+    act(() =>
+      native.channels[0].onmessage({
+        type: "finished",
+        data: { error: "invalid_credentials" },
+      }),
+    );
+    expect(screen.getByRole("alert").textContent).toBe(
+      "The login account or password was rejected. Check your login details and try again.",
+    );
+    expect(screen.getByRole("heading", { name: "Connection" })).toBeTruthy();
+    expect(screen.getByText("Offline", { exact: true })).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+      native.invoke.mock.calls.filter(([name]) => name === "connect"),
+    ).toHaveLength(1);
+    expect(
+      screen
+        .getByRole("button", { name: "Connect to character" })
+        .hasAttribute("disabled"),
+    ).toBe(false);
   });
 
   it("stops claiming a healthy connection when status updates stall", async () => {
@@ -407,7 +431,7 @@ describe("connection and chat", () => {
     expect(screen.getByLabelText("Password")).toBeTruthy();
     expect(
       (screen.getByLabelText("Character name") as HTMLInputElement).value,
-    ).toBe("ManualCharacter");
+    ).toBe("");
     expect(
       native.invoke.mock.calls.some(([name]) => name === "connect_saved"),
     ).toBe(false);
@@ -429,7 +453,7 @@ describe("connection and chat", () => {
     fireEvent.click(screen.getByRole("button", { name: "Connection" }));
     expect(
       (screen.getByLabelText("Character name") as HTMLInputElement).value,
-    ).toBe("ManualCharacter");
+    ).toBe("");
   });
 
   it("offers to save after starting a manual connection, keeping secrets out of preferences", async () => {
@@ -471,7 +495,7 @@ describe("connection and chat", () => {
     for (const [name, args] of native.invoke.mock.calls)
       if (name === "save_settings") {
         expect(JSON.stringify(args)).not.toMatch(
-          /EXAMPLE_ACCOUNT|EXAMPLE_PASSWORD|filters_open/,
+          /EXAMPLE_ACCOUNT|EXAMPLE_PASSWORD|ExampleCharacter|filters_open/,
         );
       }
     expect(localStorage.length).toBe(0);
@@ -563,6 +587,21 @@ describe("connection and chat", () => {
     expect(
       screen.getByRole("button", { name: /Unlock and connect OtherCharacter/ }),
     ).toBeTruthy();
+  });
+
+  it("clears an edited profile name when returning to the manual form", async () => {
+    savedProfiles = [profile];
+    render(<App />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Edit SavedCharacter/ }),
+    );
+    expect(
+      (screen.getByLabelText("Character name") as HTMLInputElement).value,
+    ).toBe("SavedCharacter");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel editing" }));
+    expect(
+      (screen.getByLabelText("Character name") as HTMLInputElement).value,
+    ).toBe("");
   });
 
   it("retains the old single login until the user assigns a character and saves", async () => {

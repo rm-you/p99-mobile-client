@@ -2,11 +2,13 @@
 
 ## 1. Persist settings and protect saved credentials
 
-Implemented: persistent server, character, channel filter, and follow-latest
+Implemented: persistent server, channel filter, and follow-latest
 preferences; independent OS-protected character/server/account/password profiles;
 offer to save when a manual connection starts; tap a saved character to unlock
 and connect; edit/delete controls and swipe-to-delete confirmation; migration from
 the previous single-login entry; reconnect without repeated unlock prompts.
+Confirmed credential rejections stop retries and show an actionable error. Manual
+character names are not restored or persisted outside saved profiles.
 No plaintext credential storage or decrypted password return to the webview.
 
 Validation:

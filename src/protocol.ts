@@ -52,7 +52,10 @@ export type ClientEvent =
   | { type: "reconnecting"; data: { error: string; delay_seconds: number } };
 export type AppEvent =
   | { type: "client"; data: ClientEvent }
-  | { type: "finished"; data: { error: string | null } };
+  | {
+      type: "finished";
+      data: { error: "invalid_credentials" | "connection_lost" | null };
+    };
 export const MAX_RECORDS = 1500;
 export const CHANNELS = [
   "auction",

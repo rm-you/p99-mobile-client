@@ -28,14 +28,15 @@ The catalog contains community reference data and can have gaps; see its
 link bodies remain available in the received records. Clearing the view removes
 its retained messages.
 
-Server, character, selected channels, and follow-latest preferences save on this
+Server, selected channels, and follow-latest preferences save on this
 device. After a manual connection starts, the app asks whether to save the
 character, server, account, and password together. Choose **Save** or
 **Not now**; either choice leaves the connection running. Saved characters appear above the manual connection form;
 tap a character/server entry to unlock it with device authentication and connect.
 The account and password pass directly to the Rust worker and are never filled
 back into the webview. Each saved character has independent protected storage.
-Character/server labels are visible while credentials remain locked.
+Character/server labels are visible while credentials remain locked. The manual
+character field starts blank; character names are retained only in saved profiles.
 
 Use the pencil to edit a saved character. Leave both account and password blank
 to keep its existing login, or enter both to replace it. Keeping the login during
@@ -61,7 +62,9 @@ visible for explicit removal.
 If a key becomes unavailable after changing device security settings, edit its
 entry with both account and password, or delete it and save it again. Credentials
 remain in the active worker's memory for retries without repeated unlock prompts.
-**Disconnect** asks for confirmation, then stops that worker before another
+If the login server rejects the account/password pair, retries stop and the app
+asks you to check the login details. Other connection failures retain automatic
+retries. **Disconnect** asks for confirmation, then stops that worker before another
 session can start. Chat stays in memory; chat export and message sending are not
 implemented.
 
