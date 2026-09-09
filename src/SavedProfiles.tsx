@@ -31,7 +31,7 @@ export default function SavedProfiles({
   if (!vault.profiles.length && !vault.legacySaved) return null;
   return (
     <section className="saved-profiles" aria-label="Saved characters">
-      <h3>Saved characters</h3>
+      <h2>Saved characters</h2>
       <ul>
         {[...vault.profiles]
           .sort((a, b) => profileLabel(a).localeCompare(profileLabel(b)))

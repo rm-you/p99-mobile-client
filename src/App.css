@@ -10,6 +10,7 @@
   --muted: #a1a7b0;
   --line: #34383f;
   --accent: #a9c6ef;
+  --healthy: #a1cfa9;
 }
 * {
   box-sizing: border-box;
@@ -83,7 +84,7 @@ h2 {
   font-size: 12px;
 }
 .connection-status.online {
-  color: #a1cfa9;
+  color: var(--healthy);
 }
 .connection-progress {
   background: var(--surface);
@@ -109,6 +110,9 @@ h2 {
 }
 .settings-view form {
   margin-top: 20px;
+}
+.settings-view form:first-child {
+  margin-top: 0;
 }
 fieldset {
   border: 0;
@@ -270,23 +274,25 @@ input::placeholder {
 .channel-options {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 16px;
+  gap: 8px;
 }
 .channel-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  min-height: 36px;
+  justify-content: center;
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid var(--channel-color);
+  border-radius: 999px;
+  background: #101113;
   color: var(--channel-color);
   font-size: 13px;
   font-weight: 400;
   cursor: pointer;
 }
-.channel-toggle input {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: var(--channel-color);
+.channel-toggle[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--channel-color) 20%, #101113);
+  font-weight: 500;
 }
 .sr-only {
   position: absolute;
@@ -419,14 +425,50 @@ input::placeholder {
   border-top: 1px solid var(--line);
   padding: 0 8px 0 16px;
 }
-.chat-footer > span {
+.connection-feedback {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex: 1;
   min-width: 0;
+  min-height: 30px;
+  padding: 6px 8px;
+  border-radius: 4px;
   color: var(--muted);
   font-size: 12px;
   overflow: hidden;
+}
+.connection-feedback.online {
+  color: var(--healthy);
+}
+.connection-detail {
+  position: relative;
+  flex: 1;
+  min-width: 0;
   white-space: nowrap;
+  overflow: hidden;
   text-overflow: ellipsis;
+}
+.connection-percentage {
+  position: relative;
+  font-variant-numeric: tabular-nums;
+}
+.signin-progress {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+.signin-progress > span {
+  display: block;
+  height: 100%;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  transition: width 180ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .signin-progress > span {
+    transition: none;
+  }
 }
 .latest-button {
   position: absolute;
@@ -539,14 +581,10 @@ input::placeholder {
   }
 }
 
-.saved-profiles {
-  margin-top: 24px;
-}
-.saved-profiles h3,
+.saved-profiles h2,
 .manual-heading {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--muted);
+  font-size: 18px;
+  font-weight: 600;
 }
 .manual-heading {
   margin-bottom: 16px;

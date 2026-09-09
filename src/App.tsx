@@ -15,6 +15,7 @@ import type {
   SessionStatus,
   ItemLink,
   ChatChannel,
+  ConnectionStage,
 } from "./protocol";
 import "./App.css";
 import SavedProfiles, { profileLabel } from "./SavedProfiles";
@@ -67,6 +68,7 @@ export default function App() {
   const [channels, setChannels] = useState<ChatChannel[]>([...CHANNELS]);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [status, setStatus] = useState<SessionStatus | null>(null);
+  const [stage, setStage] = useState<ConnectionStage>("connecting_login");
   const [active, setActive] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState("");
@@ -307,6 +309,7 @@ export default function App() {
     setRetrying(false);
     setNow(Date.now());
     setStatus(null);
+    setStage("connecting_login");
     setSessionIdentity(
       profile ?? {
         character: settings.character.trim(),
@@ -340,9 +343,13 @@ export default function App() {
       const message = event.data;
       switch (message.type) {
         case "status":
+          if (message.data.state === "connecting") setStage("connecting_login");
           setStatus(message.data);
           setNow(Date.now());
           setRetrying(false);
+          break;
+        case "progress":
+          setStage(message.data);
           break;
         case "record":
           if (isEmptyGuildMotd(message.data)) break;
@@ -396,12 +403,19 @@ export default function App() {
     !!settings.character.trim() &&
     (credentialsComplete || (!!editing && !settings.user && !settings.pass));
   const disabled = active || stopping || vaultBusy || !ready;
-  const connection = connectionDisplay(active, stopping, status, retrying, now);
+  const connection = connectionDisplay(
+    active,
+    stopping,
+    status,
+    retrying,
+    now,
+    stage,
+  );
   return (
     <main className="app-shell">
       <header className="app-header">
         <div className="header-title">
-          <h1>P99 Mobile</h1>
+          <h1>P99 Mobile Chat</h1>
           {tab === "chat" && sessionIdentity?.character && (
             <p className="session-context">
               {sessionIdentity.character} · P99{" "}
@@ -429,7 +443,6 @@ export default function App() {
 
       {tab === "settings" ? (
         <section className="settings-view">
-          <h2>Connection</h2>
           <SavedProfiles
             vault={vault}
             disabled={disabled}
@@ -438,9 +451,9 @@ export default function App() {
             onDelete={setConfirmation}
           />
           <form onSubmit={submitConnection}>
-            <h3 className="manual-heading">
+            <h2 className="manual-heading">
               {editing ? "Edit saved character" : "Manual connection"}
-            </h3>
+            </h2>
             <fieldset disabled={active || stopping || vaultBusy || !ready}>
               <label>
                 Login account
@@ -459,8 +472,8 @@ export default function App() {
                   }
                   placeholder={
                     editing
-                      ? "Leave blank to keep saved login"
-                      : "Your login server account"
+                      ? "leave blank to keep saved login"
+                      : "login server account"
                   }
                 />
               </label>
@@ -479,10 +492,10 @@ export default function App() {
                   }
                   placeholder={
                     editing
-                      ? "Leave blank to keep saved password"
+                      ? "leave blank to keep saved password"
                       : active
-                        ? "In use for this session"
-                        : "Your login password"
+                        ? "in use for this session"
+                        : "login password"
                   }
                 />
               </label>
@@ -522,7 +535,7 @@ export default function App() {
                       character: event.target.value,
                     }))
                   }
-                  placeholder="Your character's name"
+                  placeholder="character name"
                 />
               </label>
               {editing && (
@@ -571,7 +584,7 @@ export default function App() {
                   ? "Loading settings…"
                   : editing
                     ? "Save changes"
-                    : "Connect to character"}
+                    : "Login"}
               </button>
             )}
           </form>
@@ -623,27 +636,24 @@ export default function App() {
               </div>
               <div className="channel-options">
                 {CHANNELS.map((name) => (
-                  <label
+                  <button
                     key={name}
+                    type="button"
                     className={`channel-toggle channel-${name}`}
+                    aria-pressed={channels.includes(name)}
+                    onClick={() =>
+                      setChannels((previous) =>
+                        previous.includes(name)
+                          ? previous.filter((channel) => channel !== name)
+                          : CHANNELS.filter(
+                              (channel) =>
+                                channel === name || previous.includes(channel),
+                            ),
+                      )
+                    }
                   >
-                    <input
-                      type="checkbox"
-                      checked={channels.includes(name)}
-                      onChange={(event) =>
-                        setChannels((previous) =>
-                          event.target.checked
-                            ? CHANNELS.filter(
-                                (channel) =>
-                                  channel === name ||
-                                  previous.includes(channel),
-                              )
-                            : previous.filter((channel) => channel !== name),
-                        )
-                      }
-                    />
                     {channelLabel(name)}
-                  </label>
+                  </button>
                 ))}
               </div>
             </fieldset>
@@ -652,7 +662,7 @@ export default function App() {
               aria-label="Search retained messages"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search messages"
+              placeholder="search messages"
             />
           </details>
           <div
@@ -719,9 +729,35 @@ export default function App() {
         <div
           className={`chat-footer ${connection.busy ? "connection-progress" : ""}`}
         >
-          <span role="status" aria-label="Connection health">
-            {connection.detail}
-          </span>
+          <div
+            className={`connection-feedback ${connection.healthy ? "online" : ""}`}
+          >
+            {connection.progress !== null && (
+              <div
+                className="signin-progress"
+                role="progressbar"
+                aria-label="Sign-in progress"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={connection.progress}
+                aria-valuetext={`${connection.progress}% · ${connection.detail}`}
+              >
+                <span style={{ width: `${connection.progress}%` }} />
+              </div>
+            )}
+            <span
+              className="connection-detail"
+              role="status"
+              aria-label="Connection health"
+            >
+              {connection.detail}
+            </span>
+            {connection.progress !== null && (
+              <span className="connection-percentage" aria-hidden="true">
+                {connection.progress}%
+              </span>
+            )}
+          </div>
           {active && tab === "chat" && (
             <button
               className="text-button"

@@ -24,10 +24,11 @@ Validation:
 Implemented: channel colors, tappable item links, and an offline item detail modal
 with a bundled catalog, unavailable-item state, and optional Wiki browser button.
 The mobile lockfile includes the published decoder offsets for inline links.
-The UI uses a compact neutral layout, collapsible search and channel checkboxes,
+The UI uses a compact neutral layout, collapsible search and colored channel pills,
 Titanium channel colors, full zone names, and text navigation. Filters start
 collapsed, empty guild MOTDs are hidden, and disconnect asks for confirmation. Connection progress
-and health use plain language without transport diagnostics or counters.
+and health use plain language without transport diagnostics or counters. A subtle
+sign-in bar and percentage track completed connection steps and reset on retries.
 The catalog contains 12,122 entries derived from P99 Gear Planner's public
 Wiki/PEQ reference data. Item matching checks both names and reference IDs, and
 refuses conflicting variants. Runtime Wiki requests and HTML parsing are removed.

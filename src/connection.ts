@@ -1,10 +1,24 @@
-import type { SessionStatus } from "./protocol";
+import { CONNECTION_STAGES } from "./protocol";
+import type { ConnectionStage, SessionStatus } from "./protocol";
+
+const STAGE_LABELS: Record<ConnectionStage, string> = {
+  connecting_login: "Signing in to P99…",
+  authenticating: "Checking login details…",
+  selecting_server: "Selecting server…",
+  connecting_world: "Connecting to server…",
+  selecting_character: "Selecting character…",
+  connecting_zone: "Connecting to zone…",
+  loading_character: "Loading character…",
+  entering_world: "Entering the game world…",
+  ready: "Connected",
+};
 
 interface ConnectionDisplay {
   label: string;
   detail: string;
   healthy: boolean;
   busy: boolean;
+  progress: number | null;
 }
 
 /** Present session state without exposing transport diagnostics or counters. */
@@ -14,13 +28,15 @@ export function connectionDisplay(
   status: SessionStatus | null,
   retrying: boolean,
   now: number,
+  stage: ConnectionStage,
 ): ConnectionDisplay {
   const display = (
     label: string,
     detail: string,
     busy = false,
     healthy = false,
-  ) => ({ label, detail, busy, healthy });
+    progress: number | null = null,
+  ) => ({ label, detail, busy, healthy, progress });
   if (stopping) return display("Disconnecting", "Closing connection…", true);
   if (!active || status?.state === "stopped")
     return display("Offline", "Disconnected");
@@ -40,7 +56,14 @@ export function connectionDisplay(
     return silence === null
       ? display("Connected", "Checking connection…")
       : display("Connected", "Connection healthy", false, true);
-  if (status?.state === "zoning")
-    return display("Entering zone", "Entering the game world…", true);
-  return display("Connecting", "Signing in to P99…", true);
+  const progress = Math.round(
+    (CONNECTION_STAGES.indexOf(stage) / (CONNECTION_STAGES.length - 1)) * 100,
+  );
+  return display(
+    status?.state === "zoning" ? "Entering zone" : "Connecting",
+    STAGE_LABELS[stage],
+    true,
+    false,
+    progress,
+  );
 }

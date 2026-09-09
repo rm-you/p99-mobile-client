@@ -90,7 +90,7 @@ afterEach(() => {
 
 async function connect(keepSavePrompt = false) {
   render(<App />);
-  await screen.findByRole("button", { name: /Connect to character/ });
+  await screen.findByRole("button", { name: /Login/ });
   fireEvent.change(screen.getByLabelText("Login account"), {
     target: { value: "EXAMPLE_ACCOUNT" },
   });
@@ -100,7 +100,7 @@ async function connect(keepSavePrompt = false) {
   fireEvent.change(screen.getByLabelText("Character name"), {
     target: { value: "ExampleCharacter" },
   });
-  fireEvent.click(screen.getByRole("button", { name: /Connect to character/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Login/ }));
   await waitFor(() =>
     expect(native.invoke).toHaveBeenCalledWith(
       "connect",
@@ -140,13 +140,37 @@ describe("connection and chat", () => {
     await connect();
     const health = () =>
       screen.getByRole("status", { name: "Connection health" });
+    const progress = () =>
+      screen.getByRole("progressbar", { name: "Sign-in progress" });
+    expect(progress().getAttribute("aria-valuenow")).toBe("0");
     expect(health().textContent).toBe("Signing in to P99…");
     send({ type: "diagnostic", data: "World opcode 0x1234: deadbeef" });
     expect(health().textContent).toBe("Signing in to P99…");
+    for (const [stage, percentage, label] of [
+      ["authenticating", 13, "Checking login details…"],
+      ["selecting_server", 25, "Selecting server…"],
+      ["connecting_world", 38, "Connecting to server…"],
+      ["selecting_character", 50, "Selecting character…"],
+      ["connecting_zone", 63, "Connecting to zone…"],
+      ["loading_character", 75, "Loading character…"],
+      ["entering_world", 88, "Entering the game world…"],
+    ] as const) {
+      send({ type: "progress", data: stage });
+      expect(progress().getAttribute("aria-valuenow")).toBe(String(percentage));
+      expect(health().textContent).toBe(label);
+      expect(screen.getByText(`${percentage}%`)).toBeTruthy();
+    }
+    // Other events do not advance the step count while the server is still busy.
+    send({ type: "diagnostic", data: "World opcode 0x1234: deadbeef" });
+    expect(progress().getAttribute("aria-valuenow")).toBe("88");
     send({ type: "status", data: sessionStatus("zoning") });
     expect(health().textContent).toBe("Entering the game world…");
+    send({ type: "progress", data: "ready" });
+    expect(progress().getAttribute("aria-valuenow")).toBe("100");
     send({ type: "status", data: sessionStatus("connected") });
+    expect(screen.queryByRole("progressbar")).toBeNull();
     expect(health().textContent).toBe("Connection healthy");
+    expect(health().closest(".connection-feedback.online")).not.toBeNull();
     send({
       type: "diagnostic",
       data: "Zone session: 12345 application packets, 67890 communication records",
@@ -158,8 +182,10 @@ describe("connection and chat", () => {
       data: { error: "Unexpected opcode 0x1234: deadbeef", delay_seconds: 15 },
     });
     expect(health().textContent).toBe("Connection interrupted · Retrying…");
+    expect(screen.queryByRole("progressbar")).toBeNull();
     expect(document.querySelector(".connection-status.online")).toBeNull();
     send({ type: "status", data: sessionStatus("connecting") });
+    expect(progress().getAttribute("aria-valuenow")).toBe("0");
     expect(health().textContent).toBe("Signing in to P99…");
     fireEvent.click(screen.getByRole("button", { name: "Connection" }));
     expect(health().textContent).toBe("Signing in to P99…");
@@ -170,6 +196,7 @@ describe("connection and chat", () => {
       }),
     );
     expect(health().textContent).toBe("Disconnected");
+    expect(screen.queryByRole("progressbar")).toBeNull();
     expect(screen.getByRole("alert").textContent).toBe(
       "Connection ended. Please try connecting again.",
     );
@@ -187,16 +214,17 @@ describe("connection and chat", () => {
     expect(screen.getByRole("alert").textContent).toBe(
       "The login account or password was rejected. Check your login details and try again.",
     );
-    expect(screen.getByRole("heading", { name: "Connection" })).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Manual connection", level: 2 }),
+    ).toBeTruthy();
     expect(screen.getByText("Offline", { exact: true })).toBeTruthy();
+    expect(screen.queryByRole("progressbar")).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(
       native.invoke.mock.calls.filter(([name]) => name === "connect"),
     ).toHaveLength(1);
     expect(
-      screen
-        .getByRole("button", { name: "Connect to character" })
-        .hasAttribute("disabled"),
+      screen.getByRole("button", { name: "Login" }).hasAttribute("disabled"),
     ).toBe(false);
   });
 
@@ -285,10 +313,10 @@ describe("connection and chat", () => {
     expect(document.querySelector(".messages script")).toBeNull();
     fireEvent.click(screen.getByText("Filters", { selector: "summary" }));
     fireEvent.click(screen.getByRole("button", { name: "None" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "guild" }));
+    fireEvent.click(screen.getByRole("button", { name: "guild" }));
     expect(screen.queryByText("Selling <script>not HTML</script>")).toBeNull();
     expect(screen.getByText("Guild example")).toBeTruthy();
-    fireEvent.click(screen.getByRole("checkbox", { name: "auction" }));
+    fireEvent.click(screen.getByRole("button", { name: "auction" }));
     expect(screen.getByText("Selling <script>not HTML</script>")).toBeTruthy();
     expect(screen.getByText("Guild example")).toBeTruthy();
     fireEvent.change(screen.getByRole("searchbox"), {
@@ -344,8 +372,16 @@ describe("connection and chat", () => {
     fireEvent.click(screen.getByText("Filters", { selector: "summary" }));
     fireEvent.click(screen.getByRole("button", { name: "None" }));
     expect(screen.getByText("No channels selected")).toBeTruthy();
-    fireEvent.click(screen.getByRole("checkbox", { name: "guild" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "tell" }));
+    expect(screen.getAllByRole("button", { pressed: false })).toHaveLength(
+      CHANNELS.length,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "guild" }));
+    fireEvent.click(screen.getByRole("button", { name: "tell" }));
+    expect(
+      screen
+        .getAllByRole("button", { pressed: true })
+        .map((button) => button.textContent),
+    ).toEqual(["guild", "tell"]);
     await waitFor(() =>
       expect(native.invoke).toHaveBeenCalledWith("save_settings", {
         settings: expect.objectContaining({
@@ -447,9 +483,10 @@ describe("connection and chat", () => {
       false,
     );
     expect(
-      (screen.getByRole("checkbox", { name: "guild" }) as HTMLInputElement)
-        .checked,
-    ).toBe(true);
+      screen
+        .getByRole("button", { name: "guild" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "Connection" }));
     expect(
       (screen.getByLabelText("Character name") as HTMLInputElement).value,
@@ -706,7 +743,7 @@ describe("connection and chat", () => {
     expect(
       (
         screen.getByRole("button", {
-          name: /Connect to character/,
+          name: /Login/,
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);

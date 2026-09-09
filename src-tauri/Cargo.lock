@@ -2468,7 +2468,7 @@ dependencies = [
 [[package]]
 name = "p99-logger-client"
 version = "0.1.0"
-source = "git+https://github.com/rm-you/p99-logger-client?branch=main#52c7c735d51a88336c5946a96ecfb9a4704c53ae"
+source = "git+https://github.com/rm-you/p99-logger-client?branch=main#f710bfddf26a90ea7b7a5aa7349e5dd3a23b7fcc"
 dependencies = [
  "anyhow",
  "chrono",

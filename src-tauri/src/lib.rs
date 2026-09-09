@@ -227,7 +227,7 @@ pub fn run() {
             open_item_wiki
         ])
         .build(tauri::generate_context!())
-        .expect("Unable to initialize P99 Mobile")
+        .expect("Unable to initialize P99 Mobile Chat")
         .run(|app, event| {
             // Focus and visibility changes leave the network worker running.
             if let tauri::RunEvent::ExitRequested {

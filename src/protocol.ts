@@ -1,6 +1,19 @@
 export type Server = "green" | "blue";
 export type ConnectionState =
   "connecting" | "connected" | "zoning" | "disconnected" | "stopped";
+/** Ordered milestones emitted by the native client for each connection attempt. */
+export const CONNECTION_STAGES = [
+  "connecting_login",
+  "authenticating",
+  "selecting_server",
+  "connecting_world",
+  "selecting_character",
+  "connecting_zone",
+  "loading_character",
+  "entering_world",
+  "ready",
+] as const;
+export type ConnectionStage = (typeof CONNECTION_STAGES)[number];
 export interface ConnectRequest {
   user: string;
   pass: string;
@@ -47,6 +60,7 @@ export interface SessionStatus {
 }
 export type ClientEvent =
   | { type: "status"; data: SessionStatus }
+  | { type: "progress"; data: ConnectionStage }
   | { type: "record"; data: ChatRecord }
   | { type: "diagnostic"; data: string }
   | { type: "reconnecting"; data: { error: string; delay_seconds: number } };

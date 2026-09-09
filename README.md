@@ -1,4 +1,4 @@
-# P99 Mobile
+# P99 Mobile Chat
 
 An early native Android/iOS chat viewer built with Tauri 2, React, and the
 [reusable Rust P99 client](https://github.com/rm-you/p99-logger-client).
@@ -8,17 +8,19 @@ service or graphical EverQuest client is required.
 ## Using the app
 
 Select **P99 Green** or **P99 Blue**, enter your login server account and
-password, and provide the name of an existing character. The character joins
+password, and provide the name of an existing character, then tap **Login**. The character joins
 the zone where you last left them. Log out of the graphical game client first.
 
 The chat view receives all communication channels and lets you filter by
-channel or search the most recent 1,500 messages. Expand **Filters** to check any
+channel or search the most recent 1,500 messages. Expand **Filters** and tap the colored pills to select any
 combination of channels and search their messages, then collapse it to make room
 for chat. All channels are selected initially; **All** and **None** make changing
-selections quicker. Filters start collapsed each launch and keep applying while collapsed. Raid and Group are
+selections quicker. Selected pills have a subtle colored background. Filters start collapsed each launch and keep applying while collapsed. Raid and Group are
 excluded from the selectable channels. Chat uses Titanium's original colors
 with yellow-orange OOC, and the header displays full zone names. Empty guild
-MOTDs are hidden.
+MOTDs are hidden. During sign-in, a small progress bar shows the current step
+and percentage. It advances when connection milestones complete; it does not
+estimate remaining time.
 Tap an item link to see stats from the bundled catalog of 12,122 item entries.
 This works offline with no Wiki request. Matching uses the linked name and a
 reference item ID; missing or conflicting entries show an unavailable message.
