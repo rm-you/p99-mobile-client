@@ -2497,6 +2497,7 @@ dependencies = [
  "tauri-plugin-secure-login",
  "tempfile",
  "url",
+ "uuid",
 ]
 
 [[package]]

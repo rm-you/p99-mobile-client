@@ -90,3 +90,17 @@ export function matchesChannels(
     record.type !== "decode_error" && CHANNELS.includes(name) ? name : "system";
   return channels.includes(channel);
 }
+
+/** Guildless characters receive a blank MOTD at login; it is not a chat message. */
+export function isEmptyGuildMotd(record: ChatRecord): boolean {
+  return (
+    record.type === "chat" &&
+    record.channel_name === "guild_motd" &&
+    !(
+      record.text?.trim() ||
+      record.arguments?.some((argument) => argument.text.trim()) ||
+      record.item_links?.length ||
+      record.arguments?.some((argument) => argument.item_links?.length)
+    )
+  );
+}

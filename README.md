@@ -15,9 +15,10 @@ The chat view receives all communication channels and lets you filter by
 channel or search the most recent 1,500 messages. Expand **Filters** to check any
 combination of channels and search their messages, then collapse it to make room
 for chat. All channels are selected initially; **All** and **None** make changing
-selections quicker. Filters keep applying while collapsed. Raid and Group are
+selections quicker. Filters start collapsed each launch and keep applying while collapsed. Raid and Group are
 excluded from the selectable channels. Chat uses Titanium's original colors
-with yellow-orange OOC, and the header displays full zone names.
+with yellow-orange OOC, and the header displays full zone names. Empty guild
+MOTDs are hidden.
 Tap an item link to see stats from the bundled catalog of 12,122 item entries.
 This works offline with no Wiki request. Matching uses the linked name and a
 reference item ID; missing or conflicting entries show an unavailable message.
@@ -27,12 +28,25 @@ The catalog contains community reference data and can have gaps; see its
 link bodies remain available in the received records. Clearing the view removes
 its retained messages.
 
-Server, character, selected channels, filter-panel visibility, and follow-latest preferences are saved on
-this device. Account credentials are saved only when you choose **Save login
-securely**. Otherwise they stay in memory for the current session. A saved
-login appears locked after restarting the app; **Unlock and connect** asks for
-your device authentication and passes the credentials directly to the Rust
-worker. The account and password are not filled back into the webview.
+Server, character, selected channels, and follow-latest preferences save on this
+device. After a manual connection starts, the app asks whether to save the
+character, server, account, and password together. Choose **Save** or
+**Not now**; either choice leaves the connection running. Saved characters appear above the manual connection form;
+tap a character/server entry to unlock it with device authentication and connect.
+The account and password pass directly to the Rust worker and are never filled
+back into the webview. Each saved character has independent protected storage.
+Character/server labels are visible while credentials remain locked.
+
+Use the pencil to edit a saved character. Leave both account and password blank
+to keep its existing login, or enter both to replace it. Keeping the login during
+an Android edit requires unlocking it and then confirming the replacement save.
+Swipe left or tap the trash icon to delete an entry; both ask for confirmation. The manual form remains
+available for connecting without saving.
+
+After upgrading from the single-login version, **Previous saved login** lets you
+assign that login a character and server. The old entry is kept until the new
+profile is successfully saved. If cleanup fails, the previous entry remains
+visible for explicit removal.
 
 - Android uses an AES-256-GCM key in Android Keystore, with authentication
   required for each encryption or decryption. Android 11+ supports a strong
@@ -44,12 +58,12 @@ worker. The account and password are not filled back into the webview.
   credentials each time. There is no plaintext storage fallback. Native desktop
   development also uses manual login.
 
-Use **Forget saved login** to remove the stored secret, or **Use different
-login** to enter another account. If a key becomes unavailable after changing
-your device security settings, forget the old login and save it again. Credentials
+If a key becomes unavailable after changing device security settings, edit its
+entry with both account and password, or delete it and save it again. Credentials
 remain in the active worker's memory for retries without repeated unlock prompts.
-**Disconnect** stops that worker before another session can start. Chat stays in
-memory; chat export and message sending are not implemented.
+**Disconnect** asks for confirmation, then stops that worker before another
+session can start. Chat stays in memory; chat export and message sending are not
+implemented.
 
 Background connections are best effort. Switching apps, locking the screen, or
 losing window focus does not deliberately disconnect the session or cancel a

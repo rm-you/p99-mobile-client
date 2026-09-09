@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
-import { CHANNELS, MAX_RECORDS, matchesChannels, recordText } from "./protocol";
+import {
+  CHANNELS,
+  MAX_RECORDS,
+  matchesChannels,
+  recordText,
+  isEmptyGuildMotd,
+} from "./protocol";
 import type {
   AppEvent,
   ChatRecord,
@@ -11,6 +17,9 @@ import type {
   ChatChannel,
 } from "./protocol";
 import "./App.css";
+import SavedProfiles, { profileLabel } from "./SavedProfiles";
+import type { SavedProfile, VaultStatus } from "./SavedProfiles";
+import ConfirmDialog from "./ConfirmDialog";
 import ItemModal from "./ItemModal";
 import MessageRow from "./MessageRow";
 import { connectionDisplay } from "./connection";
@@ -27,12 +36,7 @@ interface SavedSettings {
   server: ConnectRequest["server"];
   character: string;
   channels: ChatChannel[];
-  filters_open: boolean;
   follow: boolean;
-}
-interface VaultStatus {
-  available: boolean;
-  saved: boolean;
 }
 const channelLabel = (name: string) =>
   name === "ooc" ? "OOC" : name.replace(/_/g, " ");
@@ -43,9 +47,18 @@ export default function App() {
   const [persist, setPersist] = useState(false);
   const [vault, setVault] = useState<VaultStatus>({
     available: false,
-    saved: false,
+    profiles: [],
+    legacySaved: false,
   });
-  const [useSaved, setUseSaved] = useState(false);
+  const [editing, setEditing] = useState<SavedProfile | "legacy" | null>(null);
+  const [sessionIdentity, setSessionIdentity] = useState<Pick<
+    SavedProfile,
+    "character" | "server"
+  > | null>(null);
+  const [confirmation, setConfirmation] = useState<
+    "disconnect" | "legacy" | SavedProfile | null
+  >(null);
+  const [pendingLogin, setPendingLogin] = useState<ConnectRequest | null>(null);
   const [vaultBusy, setVaultBusy] = useState(false);
   const vaultBusyRef = useRef(false);
   const saveQueue = useRef(Promise.resolve());
@@ -97,7 +110,6 @@ export default function App() {
           character: value.character,
         }));
         setChannels(value.channels);
-        setFiltersOpen(value.filters_open);
         setFollow(value.follow);
         setPersist(true);
       } else
@@ -106,7 +118,6 @@ export default function App() {
         );
       if (credentials.status === "fulfilled") {
         setVault(credentials.value);
-        setUseSaved(credentials.value.saved);
       } else
         setError(
           "Saved login could not be checked. You can still enter your credentials manually.",
@@ -128,7 +139,6 @@ export default function App() {
         server: settings.server,
         character: settings.character,
         channels,
-        filters_open: filtersOpen,
         follow,
       };
       saveQueue.current = saveQueue.current
@@ -147,34 +157,110 @@ export default function App() {
     settings.server,
     settings.character,
     channels,
-    filtersOpen,
     follow,
   ]);
 
-  async function changeSavedLogin(action: "save" | "forget") {
+  function editProfile(profile: SavedProfile | "legacy" | null) {
+    setEditing(profile);
+    setSettings((previous) => ({
+      ...previous,
+      user: "",
+      pass: "",
+      ...(profile && profile !== "legacy"
+        ? { character: profile.character, server: profile.server }
+        : {}),
+    }));
+    setError("");
+  }
+
+  async function saveProfile(connectionLogin?: ConnectRequest) {
+    if (
+      !native ||
+      vaultBusyRef.current ||
+      (activeRef.current && !connectionLogin)
+    )
+      return;
+    vaultBusyRef.current = true;
+    setVaultBusy(true);
+    setError("");
+    const input = connectionLogin ?? settings;
+    const matching =
+      connectionLogin &&
+      vault.profiles.find(
+        (profile) =>
+          profile.server === connectionLogin.server &&
+          profile.character.toLowerCase() ===
+            connectionLogin.character.toLowerCase(),
+      );
+    try {
+      const profile = await invoke<SavedProfile>("save_profile", {
+        request: {
+          id: connectionLogin
+            ? matching
+              ? matching.id
+              : null
+            : editing === "legacy"
+              ? "legacy"
+              : (editing?.id ?? null),
+          character: input.character.trim(),
+          server: input.server,
+          user: input.user.trim(),
+          pass: input.pass,
+        },
+      });
+      setVault((previous) => ({
+        ...previous,
+        profiles: [
+          ...previous.profiles.filter((p) => p.id !== profile.id),
+          profile,
+        ],
+      }));
+      if (!connectionLogin) editProfile(null);
+      else setSettings((previous) => ({ ...previous, user: "", pass: "" }));
+      // Refresh migration status only after the new protected entry is durable.
+      try {
+        setVault(await invoke<VaultStatus>("credential_status"));
+      } catch {
+        setError("Character saved. Restart the app later to refresh the list.");
+      }
+    } catch (failure) {
+      setError(
+        typeof failure === "string"
+          ? failure
+          : "Character was not saved. Unlock your device and try again.",
+      );
+    } finally {
+      vaultBusyRef.current = false;
+      setVaultBusy(false);
+    }
+  }
+
+  async function deleteProfile(profile: SavedProfile | "legacy") {
     if (!native || vaultBusyRef.current || activeRef.current) return;
     vaultBusyRef.current = true;
     setVaultBusy(true);
     setError("");
     try {
-      if (action === "save") {
-        await invoke("save_credentials", {
-          credentials: { user: settings.user.trim(), pass: settings.pass },
-        });
-        setVault((previous) => ({ ...previous, saved: true }));
-        setUseSaved(true);
-      } else {
-        await invoke("forget_credentials");
-        setVault((previous) => ({ ...previous, saved: false }));
-        setUseSaved(false);
-      }
-      setSettings((previous) => ({ ...previous, user: "", pass: "" }));
-    } catch {
-      setError(
-        action === "save"
-          ? "Login was not saved. Unlock your device and try again."
-          : "Could not forget the saved login. Try again.",
+      if (profile === "legacy") await invoke("forget_legacy");
+      else await invoke("forget_profile", { id: profile.id });
+      setVault((previous) =>
+        profile === "legacy"
+          ? { ...previous, legacySaved: false }
+          : {
+              ...previous,
+              profiles: previous.profiles.filter((p) => p.id !== profile.id),
+            },
       );
+      if (
+        editing === profile ||
+        (editing &&
+          editing !== "legacy" &&
+          profile !== "legacy" &&
+          editing.id === profile.id)
+      )
+        editProfile(null);
+    } catch {
+      setError("Could not delete the saved character. Try again.");
     } finally {
       vaultBusyRef.current = false;
       setVaultBusy(false);
@@ -193,6 +279,7 @@ export default function App() {
     if (!native || !activeRef.current) return;
     setStopping(true);
     try {
+      setPendingLogin(null);
       await invoke("disconnect");
       activeRef.current = false;
       setActive(false);
@@ -211,8 +298,7 @@ export default function App() {
       list.current.scrollTop = list.current.scrollHeight;
   }, [records, channels, query, follow, tab, filtersOpen]);
 
-  async function connect(event: FormEvent) {
-    event.preventDefault();
+  async function connect(profile?: SavedProfile) {
     if (
       !native ||
       !ready ||
@@ -221,11 +307,22 @@ export default function App() {
       vaultBusyRef.current
     )
       return;
+    const request = {
+      ...settings,
+      user: settings.user.trim(),
+      character: settings.character.trim(),
+    };
     const id = ++generation.current;
     setError("");
     setRetrying(false);
     setNow(Date.now());
     setStatus(null);
+    setSessionIdentity(
+      profile ?? {
+        character: settings.character.trim(),
+        server: settings.server,
+      },
+    );
     setRecords([]);
     activeRef.current = true;
     setActive(true);
@@ -233,6 +330,7 @@ export default function App() {
     onEvent.onmessage = (event) => {
       if (id !== generation.current) return;
       if (event.type === "finished") {
+        setPendingLogin(null);
         activeRef.current = false;
         setActive(false);
         setStatus((previous) =>
@@ -250,6 +348,7 @@ export default function App() {
           setRetrying(false);
           break;
         case "record":
+          if (isEmptyGuildMotd(message.data)) break;
           setRecords((previous) => [
             ...previous.slice(-(MAX_RECORDS - 1)),
             message.data,
@@ -264,23 +363,21 @@ export default function App() {
       }
     };
     try {
-      if (useSaved)
-        await invoke("connect_saved", {
-          server: settings.server,
-          character: settings.character.trim(),
+      if (profile) {
+        const saved = await invoke<SavedProfile>("connect_saved", {
+          id: profile.id,
           onEvent,
         });
-      else
+        setSessionIdentity(saved);
+      } else
         await invoke("connect", {
-          request: {
-            ...settings,
-            user: settings.user.trim(),
-            character: settings.character.trim(),
-          },
+          request,
           onEvent,
         });
       setSettings((previous) => ({ ...previous, pass: "" }));
       setTab("chat");
+      if (!profile && vault.available && activeRef.current)
+        setPendingLogin(request);
     } catch (failure) {
       activeRef.current = false;
       setActive(false);
@@ -292,16 +389,26 @@ export default function App() {
     }
   }
 
+  function submitConnection(event: FormEvent) {
+    event.preventDefault();
+    if (editing) void saveProfile();
+    else void connect();
+  }
+  const credentialsComplete = !!settings.user.trim() && !!settings.pass;
+  const canSave =
+    !!settings.character.trim() &&
+    (credentialsComplete || (!!editing && !settings.user && !settings.pass));
+  const disabled = active || stopping || vaultBusy || !ready;
   const connection = connectionDisplay(active, stopping, status, retrying, now);
   return (
     <main className="app-shell">
       <header className="app-header">
         <div className="header-title">
           <h1>P99 Mobile</h1>
-          {tab === "chat" && settings.character && (
+          {tab === "chat" && sessionIdentity?.character && (
             <p className="session-context">
-              {settings.character} · P99{" "}
-              {settings.server === "green" ? "Green" : "Blue"}
+              {sessionIdentity.character} · P99{" "}
+              {sessionIdentity.server === "green" ? "Green" : "Blue"}
               {status?.zone ? ` · ${zoneName(status.zone)}` : ""}
             </p>
           )}
@@ -326,10 +433,70 @@ export default function App() {
       {tab === "settings" ? (
         <section className="settings-view">
           <h2>Connection</h2>
-          <form onSubmit={connect}>
+          <SavedProfiles
+            vault={vault}
+            disabled={disabled}
+            onConnect={(profile) => void connect(profile)}
+            onEdit={editProfile}
+            onDelete={setConfirmation}
+          />
+          <form onSubmit={submitConnection}>
+            <h3 className="manual-heading">
+              {editing ? "Edit saved character" : "Manual connection"}
+            </h3>
             <fieldset disabled={active || stopping || vaultBusy || !ready}>
-              <legend>Server</legend>
-              <div className="server-picker">
+              <label>
+                Login account
+                <input
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  autoComplete="username"
+                  required={!editing}
+                  value={settings.user}
+                  onChange={(event) =>
+                    setSettings((previous) => ({
+                      ...previous,
+                      user: event.target.value,
+                    }))
+                  }
+                  placeholder={
+                    editing
+                      ? "Leave blank to keep saved login"
+                      : "Your login server account"
+                  }
+                />
+              </label>
+              <label>
+                Password
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  required={!editing}
+                  value={settings.pass}
+                  onChange={(event) =>
+                    setSettings((previous) => ({
+                      ...previous,
+                      pass: event.target.value,
+                    }))
+                  }
+                  placeholder={
+                    editing
+                      ? "Leave blank to keep saved password"
+                      : active
+                        ? "In use for this session"
+                        : "Your login password"
+                  }
+                />
+              </label>
+              <span className="server-label" id="server-label">
+                Server
+              </span>
+              <div
+                className="server-picker"
+                role="group"
+                aria-labelledby="server-label"
+              >
                 {(["green", "blue"] as const).map((server) => (
                   <button
                     className={settings.server === server ? "selected" : ""}
@@ -344,105 +511,6 @@ export default function App() {
                   </button>
                 ))}
               </div>
-              {useSaved ? (
-                <div className="saved-login">
-                  <strong>Saved login is locked</strong>
-                  <p>Unlock with your device when you connect.</p>
-                  <button
-                    type="button"
-                    className="text-button"
-                    onClick={() => setUseSaved(false)}
-                  >
-                    Use different login
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <label>
-                    Login account
-                    <input
-                      autoCapitalize="none"
-                      autoCorrect="off"
-                      spellCheck={false}
-                      autoComplete="username"
-                      required
-                      value={settings.user}
-                      onChange={(event) =>
-                        setSettings((previous) => ({
-                          ...previous,
-                          user: event.target.value,
-                        }))
-                      }
-                      placeholder="Your login server account"
-                    />
-                  </label>
-                  <label>
-                    Password
-                    <input
-                      type="password"
-                      autoComplete="current-password"
-                      required
-                      value={settings.pass}
-                      onChange={(event) =>
-                        setSettings((previous) => ({
-                          ...previous,
-                          pass: event.target.value,
-                        }))
-                      }
-                      placeholder={
-                        active
-                          ? "In use for this session"
-                          : "Your login password"
-                      }
-                    />
-                  </label>
-                  {vault.available && (
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      disabled={!settings.user.trim() || !settings.pass}
-                      onClick={() => void changeSavedLogin("save")}
-                    >
-                      {vaultBusy
-                        ? "Saving…"
-                        : vault.saved
-                          ? "Replace saved login securely"
-                          : "Save login securely"}
-                    </button>
-                  )}
-                  {!vault.available && (
-                    <p className="storage-hint">
-                      Enable a supported device lock or biometric to save your
-                      login. You can also connect without saving.
-                    </p>
-                  )}
-                  {vault.saved && (
-                    <button
-                      type="button"
-                      className="text-button"
-                      onClick={() => {
-                        setUseSaved(true);
-                        setSettings((previous) => ({
-                          ...previous,
-                          user: "",
-                          pass: "",
-                        }));
-                      }}
-                    >
-                      Use saved login
-                    </button>
-                  )}
-                </>
-              )}
-              {vault.saved && (
-                <button
-                  type="button"
-                  className="text-button forget-login"
-                  onClick={() => void changeSavedLogin("forget")}
-                >
-                  Forget saved login
-                </button>
-              )}
               <label>
                 Character name
                 <input
@@ -460,26 +528,52 @@ export default function App() {
                   placeholder="Your character's name"
                 />
               </label>
+              {editing && (
+                <p className="storage-hint">
+                  Leave both account and password blank to keep the saved login.
+                </p>
+              )}
+              {!vault.available && (
+                <p className="storage-hint">
+                  Enable a supported device lock or biometric to save your
+                  login. You can also connect without saving.
+                </p>
+              )}
+              {editing && (
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => editProfile(null)}
+                >
+                  Cancel editing
+                </button>
+              )}
             </fieldset>
             {active ? (
               <button
                 type="button"
                 className="primary-button disconnect"
                 disabled={stopping}
-                onClick={() => void disconnect()}
+                onClick={() => setConfirmation("disconnect")}
               >
                 {stopping ? "Disconnecting…" : "Disconnect"}
               </button>
             ) : (
               <button
                 className="primary-button"
-                disabled={!native || stopping || vaultBusy || !ready}
+                disabled={
+                  !native ||
+                  stopping ||
+                  vaultBusy ||
+                  !ready ||
+                  (!!editing && (!canSave || !vault.available))
+                }
                 type="submit"
               >
                 {!ready
                   ? "Loading settings…"
-                  : useSaved
-                    ? "Unlock and connect"
+                  : editing
+                    ? "Save changes"
                     : "Connect to character"}
               </button>
             )}
@@ -635,12 +729,59 @@ export default function App() {
             <button
               className="text-button"
               disabled={stopping}
-              onClick={() => void disconnect()}
+              onClick={() => setConfirmation("disconnect")}
             >
               Disconnect
             </button>
           )}
         </div>
+      )}
+      {pendingLogin && (
+        <ConfirmDialog
+          title={
+            vault.profiles.some(
+              (profile) =>
+                profile.server === pendingLogin.server &&
+                profile.character.toLowerCase() ===
+                  pendingLogin.character.toLowerCase(),
+            )
+              ? "Update saved login?"
+              : "Save this character?"
+          }
+          description={`Save ${pendingLogin.character} on P99 ${pendingLogin.server === "green" ? "Green" : "Blue"} with this account and password for next time? Your connection will continue either way.`}
+          confirm="Save"
+          cancel="Not now"
+          onCancel={() => setPendingLogin(null)}
+          onConfirm={() => {
+            const login = pendingLogin;
+            setPendingLogin(null);
+            void saveProfile(login);
+          }}
+        />
+      )}
+      {confirmation && (
+        <ConfirmDialog
+          title={
+            confirmation === "disconnect"
+              ? "Disconnect from P99?"
+              : "Delete saved login?"
+          }
+          description={
+            confirmation === "disconnect"
+              ? "Your character will leave the game. You can connect again whenever you're ready."
+              : confirmation === "legacy"
+                ? "Remove the previous saved account and password from this device?"
+                : `Remove ${profileLabel(confirmation)} and its saved login from this device?`
+          }
+          confirm={confirmation === "disconnect" ? "Disconnect" : "Delete"}
+          onCancel={() => setConfirmation(null)}
+          onConfirm={() => {
+            const action = confirmation;
+            setConfirmation(null);
+            if (action === "disconnect") void disconnect();
+            else void deleteProfile(action);
+          }}
+        />
       )}
       {selectedItem && (
         <ItemModal item={selectedItem} onClose={() => setSelectedItem(null)} />

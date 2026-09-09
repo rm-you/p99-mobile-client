@@ -7,19 +7,12 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-#[derive(Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Server {
-    Green,
-    Blue,
-}
+pub use tauri_plugin_secure_login::Server;
 
-impl Server {
-    fn name(self) -> &'static str {
-        match self {
-            Self::Green => "Project 1999: Green (Velious, PvE)",
-            Self::Blue => "Project 1999: Blue (Velious, PvE)",
-        }
+fn server_name(server: Server) -> &'static str {
+    match server {
+        Server::Green => "Project 1999: Green (Velious, PvE)",
+        Server::Blue => "Project 1999: Blue (Velious, PvE)",
     }
 }
 
@@ -62,7 +55,7 @@ impl SessionController {
         let config = ClientConfig::new(
             request.user,
             request.pass,
-            request.server.name(),
+            server_name(request.server),
             request.character,
         );
         let identity = ClientIdentity {

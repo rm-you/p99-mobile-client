@@ -4,9 +4,32 @@ use tauri::{
     Manager, Runtime,
 };
 
-/// Deliberately has no Debug implementation: these values must never be logged.
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Server {
+    Green,
+    Blue,
+}
+
+/// These labels may be shown while the account credentials remain locked.
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+pub struct SavedProfile {
+    pub id: String,
+    pub character: String,
+    pub server: Server,
+}
+
+/// Deliberately has no Debug implementation: secret values must never be logged.
+#[derive(Deserialize, Serialize)]
+pub struct ProfileLogin {
+    #[serde(flatten)]
+    pub profile: SavedProfile,
+    pub user: String,
+    pub pass: String,
+}
+
+#[derive(Deserialize)]
 pub struct Credentials {
     pub user: String,
     pub pass: String,
@@ -16,63 +39,98 @@ pub struct Credentials {
 #[serde(rename_all = "camelCase")]
 pub struct VaultStatus {
     pub available: bool,
-    pub saved: bool,
+    pub profiles: Vec<SavedProfile>,
+    pub legacy_saved: bool,
+}
+
+#[derive(Serialize)]
+struct ProfileKey<'a> {
+    id: &'a str,
 }
 
 pub struct SecureLogin<R: Runtime> {
     #[cfg(mobile)]
     handle: tauri::plugin::PluginHandle<R>,
-    // The desktop stub owns no runtime, so it must not inherit R's Send/Sync bounds.
     #[cfg(not(mobile))]
     marker: std::marker::PhantomData<fn() -> R>,
 }
 
 impl<R: Runtime> SecureLogin<R> {
-    /// Inspect availability without retrieving a secret or prompting for unlock.
+    /// List character/server labels without unlocking any stored credentials.
     pub fn status(&self) -> Result<VaultStatus, String> {
         #[cfg(mobile)]
         return self
             .handle
             .run_mobile_plugin("status", ())
-            .map_err(|_| "Could not check saved login.".into());
+            .map_err(|_| "Could not read saved characters.".into());
         #[cfg(not(mobile))]
         Ok(VaultStatus {
             available: false,
-            saved: false,
+            profiles: vec![],
+            legacy_saved: false,
         })
     }
 
-    /// Encrypt the account and password using the device's protected storage.
-    pub fn save(&self, credentials: Credentials) -> Result<(), String> {
+    /// Atomically replace one protected profile, leaving the others untouched.
+    pub fn save(&self, login: ProfileLogin) -> Result<(), String> {
         #[cfg(mobile)]
         return self
             .handle
-            .run_mobile_plugin("save", credentials)
-            .map_err(|_| "Login was not saved. Unlock your device and try again.".into());
+            .run_mobile_plugin("save", login)
+            .map_err(|_| "Character was not saved. Unlock your device and try again.".into());
         #[cfg(not(mobile))]
         {
-            let _ = credentials;
-            Err("Secure login storage is available on Android and iOS.".into())
+            let _ = login;
+            Err("Secure storage is available on Android and iOS.".into())
         }
     }
 
-    /// Unlock directly into Rust; credentials are never returned to the webview.
-    pub fn unlock(&self) -> Result<Credentials, String> {
-        #[cfg(mobile)]
-        return self.handle.run_mobile_plugin("unlock", ()).map_err(|_| {
-            "Login was not unlocked. Try again, or forget it and enter your credentials.".into()
-        });
-        #[cfg(not(mobile))]
-        Err("Secure login storage is available on Android and iOS.".into())
-    }
-
-    /// Forget the saved secret without disrupting an already-running session.
-    pub fn forget(&self) -> Result<(), String> {
+    /// Unlock into Rust only; no webview command returns decrypted credentials.
+    pub fn unlock(&self, id: &str) -> Result<ProfileLogin, String> {
+        let key = ProfileKey { id };
         #[cfg(mobile)]
         return self
             .handle
-            .run_mobile_plugin("forget", ())
-            .map_err(|_| "Could not forget the saved login.".into());
+            .run_mobile_plugin("unlock", key)
+            .map_err(|_| "Character was not unlocked. Try again or edit its saved login.".into());
+        #[cfg(not(mobile))]
+        {
+            let _ = key;
+            Err("Secure storage is available on Android and iOS.".into())
+        }
+    }
+
+    pub fn forget(&self, id: &str) -> Result<(), String> {
+        let key = ProfileKey { id };
+        #[cfg(mobile)]
+        return self
+            .handle
+            .run_mobile_plugin("forget", key)
+            .map_err(|_| "Could not delete the saved character.".into());
+        #[cfg(not(mobile))]
+        {
+            let _ = key;
+            Ok(())
+        }
+    }
+
+    /// Read the previous single-login format only during explicit profile import.
+    pub fn unlock_legacy(&self) -> Result<Credentials, String> {
+        #[cfg(mobile)]
+        return self
+            .handle
+            .run_mobile_plugin("unlockLegacy", ())
+            .map_err(|_| "Previous login was not unlocked.".into());
+        #[cfg(not(mobile))]
+        Err("Secure storage is available on Android and iOS.".into())
+    }
+
+    pub fn forget_legacy(&self) -> Result<(), String> {
+        #[cfg(mobile)]
+        return self
+            .handle
+            .run_mobile_plugin("forgetLegacy", ())
+            .map_err(|_| "Could not delete the previous login.".into());
         #[cfg(not(mobile))]
         Ok(())
     }

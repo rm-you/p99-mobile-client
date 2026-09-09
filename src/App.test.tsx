@@ -6,12 +6,24 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { CHANNELS } from "./protocol";
 import type { AppEvent, ClientEvent, SessionStatus } from "./protocol";
 
+const profile = {
+  id: "12345678-1234-4234-8234-123456789abc",
+  character: "SavedCharacter",
+  server: "green",
+};
+const otherProfile = {
+  id: "22345678-1234-4234-8234-123456789abc",
+  character: "OtherCharacter",
+  server: "blue",
+};
+let savedProfiles: (typeof profile)[] = [];
 const native = vi.hoisted(() => ({
   enabled: true,
   invoke: vi.fn(),
@@ -29,7 +41,14 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 beforeEach(() => {
   native.enabled = true;
-  native.invoke.mockReset().mockImplementation((command: string) => {
+  savedProfiles = [];
+  HTMLDialogElement.prototype.showModal = function () {
+    this.setAttribute("open", "");
+  };
+  HTMLDialogElement.prototype.close = function () {
+    this.removeAttribute("open");
+  };
+  native.invoke.mockReset().mockImplementation((command: string, args: any) => {
     if (command === "load_settings")
       return Promise.resolve({
         version: 2,
@@ -40,7 +59,26 @@ beforeEach(() => {
         follow: true,
       });
     if (command === "credential_status")
-      return Promise.resolve({ available: true, saved: false });
+      return Promise.resolve({
+        available: true,
+        profiles: savedProfiles,
+        legacySaved: false,
+      });
+    if (command === "save_profile") {
+      const { character, server, id } = args.request;
+      const result = {
+        id: id && id !== "legacy" ? id : profile.id,
+        character,
+        server,
+      };
+      savedProfiles = [
+        ...savedProfiles.filter((p) => p.id !== result.id),
+        result,
+      ];
+      return Promise.resolve(result);
+    }
+    if (command === "connect_saved")
+      return Promise.resolve(savedProfiles.find((p) => p.id === args.id));
     return Promise.resolve();
   });
   native.channels.length = 0;
@@ -50,7 +88,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function connect() {
+async function connect(keepSavePrompt = false) {
   render(<App />);
   await screen.findByRole("button", { name: /Connect to character/ });
   fireEvent.change(screen.getByLabelText("Login account"), {
@@ -77,6 +115,8 @@ async function connect() {
     ),
   );
   await screen.findByRole("heading", { name: "Chat" });
+  if (!keepSavePrompt)
+    fireEvent.click(await screen.findByRole("button", { name: "Not now" }));
 }
 
 function send(event: ClientEvent) {
@@ -287,7 +327,6 @@ describe("connection and chat", () => {
         settings: expect.objectContaining({
           version: 2,
           channels: ["guild", "tell"],
-          filters_open: true,
         }),
       }),
     );
@@ -298,7 +337,6 @@ describe("connection and chat", () => {
       expect(native.invoke).toHaveBeenCalledWith("save_settings", {
         settings: expect.objectContaining({
           channels: ["guild", "tell"],
-          filters_open: false,
         }),
       }),
     );
@@ -321,6 +359,24 @@ describe("connection and chat", () => {
         }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(
+      native.invoke.mock.calls.some(([name]) => name === "disconnect"),
+    ).toBe(false);
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Cancel",
+      }),
+    );
+    expect(
+      native.invoke.mock.calls.some(([name]) => name === "disconnect"),
+    ).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Disconnect",
+      }),
+    );
     expect(native.invoke).toHaveBeenLastCalledWith("disconnect");
     expect(screen.getByText("Disconnecting")).toBeTruthy();
     await act(async () => {
@@ -329,115 +385,280 @@ describe("connection and chat", () => {
     expect(screen.getByText("Offline", { exact: true })).toBeTruthy();
   });
 
-  it("restores preferences without unlocking or reading the saved secret into the webview", async () => {
-    native.invoke.mockImplementation((command: string) => {
+  it("lists saved characters beside the manual form and connects by id only", async () => {
+    savedProfiles = [profile, otherProfile];
+    const fallback = native.invoke.getMockImplementation()!;
+    native.invoke.mockImplementation((command: string, ...args: unknown[]) => {
       if (command === "load_settings")
         return Promise.resolve({
           version: 2,
           server: "blue",
-          character: "ExampleCharacter",
+          character: "ManualCharacter",
           channels: ["guild", "tell"],
           filters_open: true,
           follow: false,
         });
-      if (command === "credential_status")
-        return Promise.resolve({ available: true, saved: true });
-      return Promise.resolve();
+      return fallback(command, ...args);
     });
     render(<App />);
-    await screen.findByText("Saved login is locked");
-    expect(screen.queryByLabelText("Password")).toBeNull();
+    const saved = await screen.findByRole("button", {
+      name: /Unlock and connect SavedCharacter/,
+    });
+    expect(screen.getByLabelText("Password")).toBeTruthy();
+    expect(
+      (screen.getByLabelText("Character name") as HTMLInputElement).value,
+    ).toBe("ManualCharacter");
     expect(
       native.invoke.mock.calls.some(([name]) => name === "connect_saved"),
     ).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: /Unlock and connect/ }));
+    fireEvent.click(saved);
     await screen.findByRole("heading", { name: "Chat" });
-    expect(native.invoke).toHaveBeenCalledWith(
-      "connect_saved",
-      expect.objectContaining({
-        server: "blue",
-        character: "ExampleCharacter",
-      }),
+    const args = native.invoke.mock.calls.find(
+      ([name]) => name === "connect_saved",
+    )![1];
+    expect(Object.keys(args).sort()).toEqual(["id", "onEvent"]);
+    expect(args.id).toBe(profile.id);
+    expect(screen.getByText("SavedCharacter · P99 Green")).toBeTruthy();
+    expect((document.querySelector("details") as HTMLDetailsElement).open).toBe(
+      false,
     );
-    expect(
-      native.invoke.mock.calls.filter(
-        ([name]) => name === "connect_saved",
-      )[0][1],
-    ).not.toHaveProperty("request");
     expect(
       (screen.getByRole("checkbox", { name: "guild" }) as HTMLInputElement)
         .checked,
     ).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Connection" }));
     expect(
-      (screen.getByRole("checkbox", { name: "tell" }) as HTMLInputElement)
-        .checked,
-    ).toBe(true);
-    expect(
-      (screen.getByRole("checkbox", { name: "auction" }) as HTMLInputElement)
-        .checked,
-    ).toBe(false);
+      (screen.getByLabelText("Character name") as HTMLInputElement).value,
+    ).toBe("ManualCharacter");
   });
 
-  it("saves credentials separately, clears both inputs, and allows forgetting", async () => {
-    render(<App />);
-    await screen.findByRole("button", { name: /Connect to character/ });
-    fireEvent.change(screen.getByLabelText("Login account"), {
-      target: { value: "EXAMPLE_ACCOUNT" },
-    });
-    fireEvent.change(screen.getByLabelText("Password"), {
-      target: { value: "EXAMPLE_PASSWORD" },
-    });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Save login securely" }),
+  it("offers to save after starting a manual connection, keeping secrets out of preferences", async () => {
+    await connect(true);
+    expect(screen.getByRole("dialog").textContent).toContain(
+      "Save this character?",
     );
-    await screen.findByText("Saved login is locked");
-    expect(native.invoke).toHaveBeenCalledWith("save_credentials", {
-      credentials: { user: "EXAMPLE_ACCOUNT", pass: "EXAMPLE_PASSWORD" },
+    expect(native.invoke.mock.calls.some(([name]) => name === "connect")).toBe(
+      true,
+    );
+    expect(
+      native.invoke.mock.calls.some(([name]) => name === "save_profile"),
+    ).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Connection" }));
+    await screen.findByRole("button", {
+      name: /Unlock and connect ExampleCharacter/,
     });
-    fireEvent.click(screen.getByRole("button", { name: "Forget saved login" }));
-    await screen.findByLabelText("Password");
+    expect(native.invoke).toHaveBeenCalledWith("save_profile", {
+      request: {
+        id: null,
+        character: "ExampleCharacter",
+        server: "green",
+        user: "EXAMPLE_ACCOUNT",
+        pass: "EXAMPLE_PASSWORD",
+      },
+    });
     expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe(
       "",
     );
     expect(
       (screen.getByLabelText("Login account") as HTMLInputElement).value,
     ).toBe("");
-    expect(native.invoke).toHaveBeenCalledWith("forget_credentials");
     await waitFor(() =>
       expect(
         native.invoke.mock.calls.some(([name]) => name === "save_settings"),
       ).toBe(true),
     );
-    for (const [name, args] of native.invoke.mock.calls) {
+    for (const [name, args] of native.invoke.mock.calls)
       if (name === "save_settings") {
-        expect(JSON.stringify(args)).not.toContain("EXAMPLE_ACCOUNT");
-        expect(JSON.stringify(args)).not.toContain("EXAMPLE_PASSWORD");
+        expect(JSON.stringify(args)).not.toMatch(
+          /EXAMPLE_ACCOUNT|EXAMPLE_PASSWORD|filters_open/,
+        );
       }
-    }
     expect(localStorage.length).toBe(0);
+    expect(
+      native.invoke.mock.calls.some(([name]) => name === "disconnect"),
+    ).toBe(false);
   });
 
-  it("leaves a cancelled unlock offline and preserves the saved login for retry", async () => {
+  it("does not save or disconnect when the save offer is declined", async () => {
+    await connect();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+      native.invoke.mock.calls.some(
+        ([name]) => name === "save_profile" || name === "disconnect",
+      ),
+    ).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Connection" }));
+    expect(
+      screen.queryByRole("button", { name: "Save character securely" }),
+    ).toBeNull();
+  });
+
+  it("offers to update the matching saved entry and keeps the session when saving is cancelled", async () => {
+    savedProfiles = [{ ...profile, character: "ExampleCharacter" }];
     const fallback = native.invoke.getMockImplementation()!;
-    native.invoke.mockImplementation((command: string, ...args: unknown[]) => {
-      if (command === "credential_status")
-        return Promise.resolve({ available: true, saved: true });
-      if (command === "connect_saved")
-        return Promise.reject("Login was not unlocked.");
-      return fallback(command, ...args);
+    native.invoke.mockImplementation((command: string, ...args: unknown[]) =>
+      command === "save_profile"
+        ? Promise.reject("Character was not saved.")
+        : fallback(command, ...args),
+    );
+    await connect(true);
+    expect(screen.getByRole("dialog").textContent).toContain(
+      "Update saved login?",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByRole("alert");
+    expect(native.invoke).toHaveBeenCalledWith("save_profile", {
+      request: expect.objectContaining({ id: profile.id }),
     });
+    expect(screen.getByText("Connecting", { exact: true })).toBeTruthy();
+    expect(
+      native.invoke.mock.calls.some(([name]) => name === "disconnect"),
+    ).toBe(false);
+  });
+
+  it("edits labels while keeping credentials native and deletes only the selected profile", async () => {
+    savedProfiles = [profile, otherProfile];
     render(<App />);
-    await screen.findByText("Saved login is locked");
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Edit SavedCharacter/ }),
+    );
+    expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe(
+      "",
+    );
     fireEvent.change(screen.getByLabelText("Character name"), {
-      target: { value: "ExampleCharacter" },
+      target: { value: "RenamedCharacter" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /Unlock and connect/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await screen.findByRole("button", {
+      name: /Unlock and connect RenamedCharacter/,
+    });
+    expect(native.invoke).toHaveBeenCalledWith("save_profile", {
+      request: {
+        id: profile.id,
+        character: "RenamedCharacter",
+        server: "green",
+        user: "",
+        pass: "",
+      },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /Delete RenamedCharacter/ }),
+    );
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Delete",
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", {
+          name: /Unlock and connect RenamedCharacter/,
+        }),
+      ).toBeNull(),
+    );
+    expect(native.invoke).toHaveBeenCalledWith("forget_profile", {
+      id: profile.id,
+    });
+    expect(
+      screen.getByRole("button", { name: /Unlock and connect OtherCharacter/ }),
+    ).toBeTruthy();
+  });
+
+  it("retains the old single login until the user assigns a character and saves", async () => {
+    const fallback = native.invoke.getMockImplementation()!;
+    native.invoke.mockImplementation((command: string, ...args: unknown[]) =>
+      command === "credential_status"
+        ? Promise.resolve({ available: true, profiles: [], legacySaved: true })
+        : fallback(command, ...args),
+    );
+    render(<App />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Previous saved login/ }),
+    );
+    fireEvent.change(screen.getByLabelText("Character name"), {
+      target: { value: "ImportedCharacter" },
+    });
+    expect(
+      native.invoke.mock.calls.some(([name]) => name === "save_profile"),
+    ).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() =>
+      expect(native.invoke).toHaveBeenCalledWith("save_profile", {
+        request: {
+          id: "legacy",
+          character: "ImportedCharacter",
+          server: "green",
+          user: "",
+          pass: "",
+        },
+      }),
+    );
+  });
+
+  it("leaves cancelled authentication offline with the saved entry intact", async () => {
+    savedProfiles = [profile];
+    const fallback = native.invoke.getMockImplementation()!;
+    native.invoke.mockImplementation((command: string, ...args: unknown[]) =>
+      command === "connect_saved"
+        ? Promise.reject("Character was not unlocked.")
+        : fallback(command, ...args),
+    );
+    render(<App />);
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /Unlock and connect SavedCharacter/,
+      }),
+    );
     await screen.findByRole("alert");
     expect(screen.getByText("Offline", { exact: true })).toBeTruthy();
-    expect(screen.getByText("Saved login is locked")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Unlock and connect SavedCharacter/ }),
+    ).toBeTruthy();
     expect(native.invoke.mock.calls.some(([name]) => name === "connect")).toBe(
       false,
     );
+  });
+
+  it("discards only empty guild MOTDs and keeps populated announcements", async () => {
+    await connect();
+    const record = {
+      type: "chat" as const,
+      timestamp: "2026-01-01T12:00:00Z",
+      server: "Test Server",
+      character: "ExampleCharacter",
+      zone: "ecommons",
+      session_id: "synthetic",
+      channel_name: "guild_motd",
+      message_id: 1,
+    };
+    send({ type: "record", data: { ...record, text: "  \n " } });
+    send({
+      type: "record",
+      data: {
+        ...record,
+        message_id: 2,
+        arguments: [{ text: "" }],
+        string_id: 123,
+      },
+    });
+    expect(screen.getByText("0 messages")).toBeTruthy();
+    send({
+      type: "record",
+      data: { ...record, message_id: 3, text: "Guild announcement" },
+    });
+    send({
+      type: "record",
+      data: {
+        ...record,
+        message_id: 4,
+        channel_name: "motd",
+        text: "Server announcement",
+      },
+    });
+    expect(screen.getByText("2 messages")).toBeTruthy();
+    expect(screen.getByText("Guild announcement")).toBeTruthy();
+    expect(screen.getByText("Server announcement")).toBeTruthy();
   });
 
   it("keeps the browser preview disconnected", () => {

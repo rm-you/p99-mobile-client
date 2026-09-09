@@ -38,7 +38,9 @@ pub struct Settings {
     pub server: Server,
     pub character: String,
     pub channels: Vec<ChatChannel>,
-    pub filters_open: bool,
+    // Accept the retired field in old settings, but never persist UI expansion.
+    #[serde(default, rename = "filters_open", skip_serializing)]
+    _legacy_filters_open: bool,
     pub follow: bool,
 }
 impl Default for Settings {
@@ -48,7 +50,7 @@ impl Default for Settings {
             server: Server::Green,
             character: String::new(),
             channels: ChatChannel::ALL.to_vec(),
-            filters_open: false,
+            _legacy_filters_open: false,
             follow: true,
         }
     }
@@ -186,7 +188,7 @@ mod tests {
         let mut settings = Settings {
             character: "ExampleCharacter".into(),
             channels: vec![ChatChannel::Guild, ChatChannel::Tell],
-            filters_open: true,
+            _legacy_filters_open: true,
             ..Settings::default()
         };
         store.save(settings.clone()).unwrap();
@@ -194,7 +196,7 @@ mod tests {
         store.save(settings).unwrap();
         let reloaded = SettingsStore::new(path).load().unwrap();
         assert!(reloaded.channels == [ChatChannel::Auction, ChatChannel::Ooc]);
-        assert!(reloaded.filters_open);
+        assert!(!reloaded._legacy_filters_open);
         assert_eq!(reloaded.character, "ExampleCharacter");
     }
     #[test]
@@ -227,7 +229,7 @@ mod tests {
             assert!(matches!(settings.server, Server::Blue));
             assert_eq!(settings.character, "ExampleCharacter");
             assert!(!settings.follow);
-            assert!(!settings.filters_open);
+            assert!(!settings._legacy_filters_open);
             assert!(
                 settings.channels
                     == if channel == "all" {
@@ -280,11 +282,12 @@ mod tests {
         assert!(migrated.channels == [ChatChannel::Guild, ChatChannel::Ooc]);
         assert!(matches!(migrated.server, Server::Blue));
         assert_eq!(migrated.character, "ExampleCharacter");
-        assert!(migrated.filters_open);
+        assert!(migrated._legacy_filters_open);
         assert!(!migrated.follow);
         store.save(migrated).unwrap();
         let saved = fs::read_to_string(&store.path).unwrap();
         assert!(!saved.contains("group") && !saved.contains("raid"));
+        assert!(!saved.contains("filters_open"));
         for channel in [ChatChannel::Group, ChatChannel::Raid] {
             assert!(store
                 .save(Settings {

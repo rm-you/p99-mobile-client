@@ -1,13 +1,17 @@
 mod items;
+mod profiles;
 mod session;
 mod settings;
 use tauri_plugin_opener::OpenerExt;
 
+use profiles::{validate_id, validate_unlocked, ProfileOperations, SaveProfile};
 use session::{AppEvent, ConnectRequest, SessionController};
 use settings::{Settings, SettingsStore};
 use std::sync::Arc;
 use tauri::{ipc::Channel, Manager, State};
-use tauri_plugin_secure_login::{Credentials, SecureLogin, VaultStatus};
+use tauri_plugin_secure_login::{
+    Credentials, ProfileLogin, SavedProfile, SecureLogin, VaultStatus,
+};
 
 /// Validate settings and start the network worker without blocking the webview.
 #[tauri::command]
@@ -28,67 +32,137 @@ async fn connect(
     .map_err(|_| "Unable to start session task")?
 }
 
-/// Unlock a saved login into the native worker without exposing it to JavaScript.
+/// Unlock the selected character directly into the native worker.
 #[tauri::command]
 async fn connect_saved(
-    server: session::Server,
-    character: String,
+    id: String,
     on_event: Channel<AppEvent>,
     app: tauri::AppHandle,
-) -> Result<(), String> {
+) -> Result<SavedProfile, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let credentials = app.state::<SecureLogin<tauri::Wry>>().unlock()?;
+        validate_id(&id)?;
+        let operations = app.state::<ProfileOperations>();
+        let _guard = operations
+            .0
+            .lock()
+            .map_err(|_| "Saved characters unavailable")?;
+        let vault = app.state::<SecureLogin<tauri::Wry>>();
+        let expected = vault
+            .status()?
+            .profiles
+            .into_iter()
+            .find(|p| p.id == id)
+            .ok_or("This saved character no longer exists.")?;
+        let login = vault.unlock(&id)?;
+        validate_unlocked(&login, &expected)?;
         app.state::<Arc<SessionController>>().start(
             ConnectRequest {
-                user: credentials.user,
-                pass: credentials.pass,
-                server,
-                character,
+                user: login.user,
+                pass: login.pass,
+                server: login.profile.server,
+                character: login.profile.character,
             },
             move |event| {
                 on_event
                     .send(event)
                     .map_err(|_| "The chat view is no longer available".into())
             },
-        )
+        )?;
+        Ok(expected)
     })
     .await
-    .map_err(|_| "Unable to unlock saved login")?
+    .map_err(|_| "Unable to unlock saved character")?
 }
 
-/// Check saved-login availability without prompting or reading credentials.
+/// Read labels without prompting or reading protected account credentials.
 #[tauri::command]
 async fn credential_status(app: tauri::AppHandle) -> Result<VaultStatus, String> {
     tauri::async_runtime::spawn_blocking(move || app.state::<SecureLogin<tauri::Wry>>().status())
         .await
-        .map_err(|_| "Unable to check saved login")?
+        .map_err(|_| "Unable to check saved characters")?
 }
 
-/// Validate and protect an explicitly saved login with device authentication.
+/// Save one complete tuple; edits can retain credentials without returning them to JavaScript.
 #[tauri::command]
-async fn save_credentials(credentials: Credentials, app: tauri::AppHandle) -> Result<(), String> {
-    if credentials.user.trim().is_empty()
-        || credentials.pass.is_empty()
-        || credentials.user.contains('\0')
-        || credentials.pass.contains('\0')
-        || credentials.user.len() > 1024
-        || credentials.pass.len() > 1024
-    {
-        return Err("Enter a valid login account and password.".into());
-    }
+async fn save_profile(request: SaveProfile, app: tauri::AppHandle) -> Result<SavedProfile, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        app.state::<SecureLogin<tauri::Wry>>().save(credentials)
+        let operations = app.state::<ProfileOperations>();
+        let _guard = operations
+            .0
+            .lock()
+            .map_err(|_| "Saved characters unavailable")?;
+        let vault = app.state::<SecureLogin<tauri::Wry>>();
+        let status = vault.status()?;
+        request.validate(&status.profiles, status.legacy_saved)?;
+        let profile = request.metadata();
+        let legacy = request.id.as_deref() == Some("legacy");
+        let credentials = if request.user.is_empty() && request.pass.is_empty() {
+            if legacy {
+                vault.unlock_legacy()?
+            } else {
+                let expected = status
+                    .profiles
+                    .iter()
+                    .find(|p| Some(&p.id) == request.id.as_ref())
+                    .ok_or("This saved character no longer exists.")?;
+                let login = vault.unlock(&expected.id)?;
+                validate_unlocked(&login, expected)?;
+                Credentials {
+                    user: login.user,
+                    pass: login.pass,
+                }
+            }
+        } else {
+            Credentials {
+                user: request.user,
+                pass: request.pass,
+            }
+        };
+        vault.save(ProfileLogin {
+            profile: profile.clone(),
+            user: credentials.user,
+            pass: credentials.pass,
+        })?;
+        if legacy {
+            // A cleanup failure must not turn a durable save into a reported failure.
+            // The old entry remains visible and can be removed explicitly.
+            let _ = vault.forget_legacy();
+        }
+        Ok(profile)
     })
     .await
-    .map_err(|_| "Unable to save login")?
+    .map_err(|_| "Unable to save character")?
 }
 
-/// Delete the saved login; active workers retain their current in-memory copy.
+/// Remove only the selected profile, leaving other accounts and characters intact.
 #[tauri::command]
-async fn forget_credentials(app: tauri::AppHandle) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || app.state::<SecureLogin<tauri::Wry>>().forget())
-        .await
-        .map_err(|_| "Unable to forget login")?
+async fn forget_profile(id: String, app: tauri::AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        validate_id(&id)?;
+        let operations = app.state::<ProfileOperations>();
+        let _guard = operations
+            .0
+            .lock()
+            .map_err(|_| "Saved characters unavailable")?;
+        app.state::<SecureLogin<tauri::Wry>>().forget(&id)
+    })
+    .await
+    .map_err(|_| "Unable to delete saved character")?
+}
+
+/// Explicitly remove the old single-login entry after an upgrade.
+#[tauri::command]
+async fn forget_legacy(app: tauri::AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let operations = app.state::<ProfileOperations>();
+        let _guard = operations
+            .0
+            .lock()
+            .map_err(|_| "Saved characters unavailable")?;
+        app.state::<SecureLogin<tauri::Wry>>().forget_legacy()
+    })
+    .await
+    .map_err(|_| "Unable to delete previous login")?
 }
 
 /// Load validated preferences without exposing the credential store.
@@ -132,6 +206,7 @@ pub fn run() {
         .plugin(tauri_plugin_secure_login::init())
         .plugin(tauri_plugin_opener::init())
         .manage(Arc::new(SessionController::default()))
+        .manage(ProfileOperations::default())
         .setup(|app| {
             app.manage(SettingsStore::new(
                 app.path().app_config_dir()?.join("settings.json"),
@@ -143,8 +218,9 @@ pub fn run() {
             connect_saved,
             disconnect,
             credential_status,
-            save_credentials,
-            forget_credentials,
+            save_profile,
+            forget_profile,
+            forget_legacy,
             load_settings,
             save_settings,
             item_details,

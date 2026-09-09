@@ -190,19 +190,6 @@ input::placeholder {
   line-height: 1.6;
   margin-top: 16px;
 }
-.saved-login {
-  margin-top: 20px;
-}
-.saved-login strong {
-  font-size: 14px;
-  font-weight: 500;
-}
-.saved-login p {
-  margin-top: 5px;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.5;
-}
 .secondary-button {
   min-height: 44px;
   padding: 10px 12px;
@@ -219,10 +206,6 @@ input::placeholder {
   background: transparent;
   color: var(--accent);
   font-size: 13px;
-}
-.saved-login .text-button,
-.forget-login {
-  padding-left: 0;
 }
 .bottom-nav {
   flex-shrink: 0;
@@ -554,4 +537,104 @@ input::placeholder {
   .settings-view {
     padding: 24px;
   }
+}
+
+.saved-profiles {
+  margin-top: 24px;
+}
+.saved-profiles h3,
+.manual-heading {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.manual-heading {
+  margin-bottom: 16px;
+}
+.saved-profiles ul {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+}
+.profile-row,
+.legacy-profile {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+.profile-connect {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  padding: 14px 0;
+  gap: 5px;
+  text-align: left;
+  color: #e5e7eb;
+  background: transparent;
+}
+.profile-connect strong {
+  font-size: 15px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.profile-connect span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.icon-button {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  color: var(--muted);
+  background: transparent;
+}
+.icon-button:hover {
+  color: var(--accent);
+}
+.confirm-dialog {
+  padding: 20px;
+}
+.confirm-dialog p {
+  margin-top: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.server-label {
+  display: block;
+  margin: 18px 0 8px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.swipe-profile {
+  position: relative;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+.profile-row {
+  position: relative;
+  background: #141619;
+}
+.swipe-delete-hint {
+  position: absolute;
+  inset: 0 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  background: #623333;
+  color: #fff;
+  font-size: 13px;
 }
