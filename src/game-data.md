@@ -10,6 +10,7 @@ are aliases for the Commonlands zones.
 
 Channel colors in `App.css` use the Titanium client's TextColors palette,
 checked against both the installed client's INI settings and embedded RGB table.
+OOC uses a custom yellow-orange (#FFCC66) to distinguish it from Auction.
 The bundled EQ manual documents User_1 through User_8 and User_18;
 [EQEmu's chat constants](https://github.com/EQEmu/EQEmu/blob/master/common/eq_constants.h)
 also identify item links and raid chat. User color indices equal the chat color
@@ -21,7 +22,7 @@ constant minus 255.
 | Tell          | 2          | #BE28BE |
 | Group         | 3          | #00FFFF |
 | Guild         | 4          | #28F028 |
-| OOC           | 5          | #008000 |
+| OOC           | custom     | #FFCC66 |
 | Auction       | 6          | #008000 |
 | Shout         | 7          | #FF0000 |
 | Emote         | 8          | #5A5AFF |

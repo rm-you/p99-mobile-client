@@ -59,10 +59,8 @@ export const CHANNELS = [
   "ooc",
   "guild",
   "tell",
-  "group",
   "say",
   "shout",
-  "raid",
   "emote",
   "system",
 ] as const;

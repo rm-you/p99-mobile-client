@@ -15,8 +15,9 @@ The chat view receives all communication channels and lets you filter by
 channel or search the most recent 1,500 messages. Expand **Filters** to check any
 combination of channels and search their messages, then collapse it to make room
 for chat. All channels are selected initially; **All** and **None** make changing
-selections quicker. Filters keep applying while collapsed. Chat uses Titanium's
-original channel colors, and the header displays full zone names.
+selections quicker. Filters keep applying while collapsed. Raid and Group are
+excluded from the selectable channels. Chat uses Titanium's original colors
+with yellow-orange OOC, and the header displays full zone names.
 Tap an item link to see stats from the bundled catalog of 12,122 item entries.
 This works offline with no Wiki request. Matching uses the linked name and a
 reference item ID; missing or conflicting entries show an unavailable message.

@@ -346,9 +346,11 @@ input::placeholder {
 .channel-motd {
   --channel-color: #ffffff;
 }
-.channel-auction,
-.channel-ooc {
+.channel-auction {
   --channel-color: #008000;
+}
+.channel-ooc {
+  --channel-color: #ffcc66;
 }
 .channel-guild,
 .channel-guild_motd {

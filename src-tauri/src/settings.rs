@@ -9,6 +9,7 @@ pub enum ChatChannel {
     Ooc,
     Guild,
     Tell,
+    // Retired choices remain readable when migrating saved preferences.
     Group,
     Say,
     Shout,
@@ -17,15 +18,13 @@ pub enum ChatChannel {
     System,
 }
 impl ChatChannel {
-    const ALL: [Self; 10] = [
+    const ALL: [Self; 8] = [
         Self::Auction,
         Self::Ooc,
         Self::Guild,
         Self::Tell,
-        Self::Group,
         Self::Say,
         Self::Shout,
-        Self::Raid,
         Self::Emote,
         Self::System,
     ];
@@ -62,6 +61,10 @@ impl Settings {
             || self
                 .channels
                 .iter()
+                .any(|channel| !ChatChannel::ALL.contains(channel))
+            || self
+                .channels
+                .iter()
                 .enumerate()
                 .any(|(index, channel)| self.channels[..index].contains(channel))
         {
@@ -90,7 +93,7 @@ enum StoredSettings {
 }
 impl StoredSettings {
     fn current(self) -> Result<Settings, String> {
-        let settings = match self {
+        let mut settings = match self {
             Self::Current(settings) => settings,
             Self::Legacy(old) => {
                 if old.version != 1 {
@@ -113,6 +116,9 @@ impl StoredSettings {
                 }
             }
         };
+        settings
+            .channels
+            .retain(|channel| ChatChannel::ALL.contains(channel));
         settings.validate()?;
         Ok(settings)
     }
@@ -257,6 +263,35 @@ mod tests {
             fs::write(&store.path, &bytes).unwrap();
             assert!(store.load().is_err());
             assert_eq!(fs::read(&store.path).unwrap(), bytes);
+        }
+    }
+
+    #[test]
+    fn retired_channels_are_removed_without_losing_other_preferences() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SettingsStore::new(dir.path().join("settings.json"));
+        let old = serde_json::json!({
+            "version": 2, "server": "blue", "character": "ExampleCharacter",
+            "channels": ["group", "guild", "raid", "ooc"],
+            "filters_open": true, "follow": false
+        });
+        fs::write(&store.path, serde_json::to_vec(&old).unwrap()).unwrap();
+        let migrated = store.load().unwrap();
+        assert!(migrated.channels == [ChatChannel::Guild, ChatChannel::Ooc]);
+        assert!(matches!(migrated.server, Server::Blue));
+        assert_eq!(migrated.character, "ExampleCharacter");
+        assert!(migrated.filters_open);
+        assert!(!migrated.follow);
+        store.save(migrated).unwrap();
+        let saved = fs::read_to_string(&store.path).unwrap();
+        assert!(!saved.contains("group") && !saved.contains("raid"));
+        for channel in [ChatChannel::Group, ChatChannel::Raid] {
+            assert!(store
+                .save(Settings {
+                    channels: vec![channel],
+                    ..Settings::default()
+                })
+                .is_err());
         }
     }
 }
