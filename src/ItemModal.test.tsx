@@ -27,8 +27,6 @@ const details: ItemDetails = {
     "DMG: 12",
     "Effect: <script>text only</script>",
   ],
-  source_url: "https://wiki.project1999.com/Example_Blade",
-  fetched_at: 1000,
 };
 beforeEach(() => {
   native.invoke.mockReset();
@@ -54,8 +52,8 @@ afterEach(() => {
   Reflect.deleteProperty(HTMLDialogElement.prototype, "close");
 });
 
-describe("Wiki item modal", () => {
-  it("loads only the selected name and renders text with a native browser action", async () => {
+describe("offline item modal", () => {
+  it("looks up the selected item ID and name and renders text with an optional browser action", async () => {
     let resolve!: (details: ItemDetails) => void;
     native.invoke.mockImplementation((name) =>
       name === "item_details"
@@ -70,6 +68,7 @@ describe("Wiki item modal", () => {
       "Loading item details",
     );
     expect(native.invoke).toHaveBeenCalledWith("item_details", {
+      itemId: 42,
       name: "Example Blade",
     });
     await act(async () => resolve(details));
@@ -85,20 +84,19 @@ describe("Wiki item modal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close item details" }));
     expect(close).toHaveBeenCalledOnce();
   });
-  it("offers retry and the source link when a lookup fails", async () => {
-    native.invoke
-      .mockRejectedValueOnce("No Wiki page was found for this item.")
-      .mockResolvedValueOnce(details);
+  it("offers the Wiki without retrying or fetching when an item is missing", async () => {
+    native.invoke.mockRejectedValueOnce(
+      "This item is not in the offline catalog.",
+    );
     render(<ItemModal item={link} onClose={() => {}} />);
     await screen.findByRole("alert");
     expect(
       screen.getByRole("button", { name: /View on P99 Wiki/ }),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-    await screen.findByText("PRIMARY");
-    expect(native.invoke).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    expect(native.invoke).toHaveBeenCalledTimes(1);
   });
-  it("ignores an old response after the selected item changes", async () => {
+  it("reloads a different ID with the same name and ignores the old response", async () => {
     let old!: (details: ItemDetails) => void;
     native.invoke
       .mockImplementationOnce(
@@ -109,14 +107,17 @@ describe("Wiki item modal", () => {
       )
       .mockResolvedValueOnce({
         ...details,
-        name: "Another Item",
         lines: ["Slot: BACK"],
       });
     const view = render(<ItemModal item={link} onClose={() => {}} />);
     view.rerender(
-      <ItemModal item={{ ...link, text: "Another Item" }} onClose={() => {}} />,
+      <ItemModal item={{ ...link, item_id: 43 }} onClose={() => {}} />,
     );
     await screen.findByText("BACK");
+    expect(native.invoke).toHaveBeenLastCalledWith("item_details", {
+      itemId: 43,
+      name: "Example Blade",
+    });
     await act(async () => old(details));
     expect(screen.queryByText("PRIMARY")).toBeNull();
     expect(screen.getByText("BACK")).toBeTruthy();

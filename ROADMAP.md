@@ -16,18 +16,19 @@ Validation:
 
 ## 2. Improve chat presentation and item links
 
-Implemented: channel colors, tappable item links, and a P99 Wiki detail modal
-with loading/error states, retry, a bounded cache, and a source-page button.
+Implemented: channel colors, tappable item links, and an offline item detail modal
+with a bundled catalog, unavailable-item state, and optional Wiki browser button.
 The mobile lockfile includes the published decoder offsets for inline links.
 The UI uses a compact neutral layout, collapsible search and channel checkboxes,
 Titanium channel colors, full zone names, and text navigation. Connection progress
 and health use plain language without transport diagnostics or counters.
-Wiki HTML is reduced to item-card text by Rust before reaching the UI.
-Android emulator validation covers real Wiki lookup, caching, inline and legacy
-item buttons, modal dismissal/focus restoration, and opening the source browser.
+The catalog contains 12,122 entries derived from P99 Gear Planner's public
+Wiki/PEQ reference data. Item matching checks both names and reference IDs, and
+refuses conflicting variants. Runtime Wiki requests and HTML parsing are removed.
+Earlier Android emulator validation covered inline and legacy item buttons,
+modal dismissal/focus restoration, and opening the source browser.
 
 Remaining:
-- Replace runtime Wiki lookups with a bundled item database.
 - Validate the item flow on physical Android and iOS devices.
 
 ## 3. Improve background connection reliability

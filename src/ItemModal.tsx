@@ -4,9 +4,7 @@ import type { ItemLink } from "./protocol";
 
 export interface ItemDetails {
   name: string;
-  source_url: string;
   lines: string[];
-  fetched_at: number;
 }
 type Lookup =
   | { state: "loading" }
@@ -23,7 +21,6 @@ export default function ItemModal({
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [lookup, setLookup] = useState<Lookup>({ state: "loading" });
-  const [attempt, setAttempt] = useState(0);
   const [browserError, setBrowserError] = useState("");
   useLayoutEffect(() => {
     const element = dialog.current!;
@@ -38,7 +35,10 @@ export default function ItemModal({
   useEffect(() => {
     let cancelled = false;
     setLookup({ state: "loading" });
-    void invoke<ItemDetails>("item_details", { name: item.text }).then(
+    void invoke<ItemDetails>("item_details", {
+      itemId: item.item_id,
+      name: item.text,
+    }).then(
       (details) => {
         if (!cancelled) setLookup({ state: "ready", item: details });
       },
@@ -49,14 +49,14 @@ export default function ItemModal({
             message:
               typeof error === "string"
                 ? error
-                : "Item details are unavailable. Please try again.",
+                : "Offline item details are unavailable.",
           });
       },
     );
     return () => {
       cancelled = true;
     };
-  }, [item.text, attempt]);
+  }, [item.text, item.item_id]);
 
   const details = lookup.state === "ready" ? lookup.item : null;
   async function openWiki() {
@@ -109,13 +109,6 @@ export default function ItemModal({
         {lookup.state === "error" && (
           <div className="item-error">
             <p role="alert">{lookup.message}</p>
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={() => setAttempt((n) => n + 1)}
-            >
-              Try again
-            </button>
           </div>
         )}
         {details && (

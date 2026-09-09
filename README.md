@@ -17,13 +17,14 @@ combination of channels and search their messages, then collapse it to make room
 for chat. All channels are selected initially; **All** and **None** make changing
 selections quicker. Filters keep applying while collapsed. Chat uses Titanium's
 original channel colors, and the header displays full zone names.
-Tap an item link to open its stats from the P99 Wiki, or open its source page in
-your browser. Lookups use the item name, with loading, retry, and unavailable-page
-states; account credentials and chat messages are never sent to the Wiki.
-Successful lookups stay in memory for up to 24 hours (128 items). The app extracts
-plain text from the Wiki item card and never renders remote HTML. Item link IDs
-and original link bodies remain available in the received records. Clearing the
-view removes its retained messages.
+Tap an item link to see stats from the bundled catalog of 12,122 item entries.
+This works offline with no Wiki request. Matching uses the linked name and a
+reference item ID; missing or conflicting entries show an unavailable message.
+**View on P99 Wiki** opens the item page in your browser only when tapped.
+The catalog contains community reference data and can have gaps; see its
+[source and update notes](src-tauri/data/README.md). Item link IDs and original
+link bodies remain available in the received records. Clearing the view removes
+its retained messages.
 
 Server, character, selected channels, filter-panel visibility, and follow-latest preferences are saved on
 this device. Account credentials are saved only when you choose **Save login
@@ -117,9 +118,9 @@ credential files.
   validation, and serial session shutdown.
 - `src-tauri/src/lib.rs`: native commands and application lifecycle callbacks.
 - `src-tauri/src/settings.rs`: validated, atomic writes of nonsecret preferences.
-- `src-tauri/src/wiki/`: bounded HTTPS item lookups, text extraction, and cache.
-  See its [TLS notes](src-tauri/src/wiki/README.md) for the Wiki's incomplete
-  certificate chain and the supplemental public intermediate.
+- `src-tauri/src/items.rs`: offline item lookup and safe Wiki browser URLs.
+- `src-tauri/data/`: bundled item cards, source metadata, and update instructions.
+- `scripts/import_items.py`: deterministic conversion of the public source snapshot.
 - `src/itemText.ts`: converts decoded UTF-8 item ranges for inline rendering.
   Records without these ranges retain separate tappable item buttons.
 - `src-tauri/secure-login/`: native Keystore/Keychain integration. Its Rust API
