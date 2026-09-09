@@ -4,7 +4,7 @@
 from [P99 Gear Planner](https://p99planner.com/)'s public browser database.
 Thanks to Wermhat and the Project 1999 Wiki contributors for compiling this data.
 The source URL, checksum, dates, and entry count are recorded in `source.json`.
-No Planner or Pulse application code, artwork, or Wiki article prose is bundled.
+No Planner application code, artwork, or Wiki article prose is bundled.
 
 The [Planner's source notes](https://p99planner.com/about) describe Wiki-derived
 data with some fields backfilled from legacy EQEmu/PEQ. Its metadata identifies
