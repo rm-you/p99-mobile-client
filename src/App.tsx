@@ -594,19 +594,7 @@ export default function App() {
           </p>
         </section>
       ) : (
-        <section className="chat-view">
-          <div className="chat-toolbar">
-            <h2>Chat</h2>
-            <span>{records.length.toLocaleString()} messages</span>
-            <button
-              className="text-button"
-              type="button"
-              onClick={() => setRecords([])}
-              disabled={!records.length}
-            >
-              Clear
-            </button>
-          </div>
+        <section className="chat-view" aria-label="Chat">
           <details
             className="chat-filters"
             open={filtersOpen}
@@ -665,6 +653,17 @@ export default function App() {
               placeholder="search messages"
             />
           </details>
+          <div className="chat-toolbar">
+            <span>{records.length.toLocaleString()} messages</span>
+            <button
+              className="text-button"
+              type="button"
+              onClick={() => setRecords([])}
+              disabled={!records.length}
+            >
+              Clear
+            </button>
+          </div>
           <div
             className="messages"
             ref={list}

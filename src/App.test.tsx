@@ -114,7 +114,7 @@ async function connect(keepSavePrompt = false) {
       }),
     ),
   );
-  await screen.findByRole("heading", { name: "Chat" });
+  await screen.findByRole("region", { name: "Chat" });
   if (!keepSavePrompt)
     fireEvent.click(await screen.findByRole("button", { name: "Not now" }));
 }
@@ -472,7 +472,7 @@ describe("connection and chat", () => {
       native.invoke.mock.calls.some(([name]) => name === "connect_saved"),
     ).toBe(false);
     fireEvent.click(saved);
-    await screen.findByRole("heading", { name: "Chat" });
+    await screen.findByRole("region", { name: "Chat" });
     const args = native.invoke.mock.calls.find(
       ([name]) => name === "connect_saved",
     )![1];
