@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "P99 Mobile",
+  "productName": "P99 Mobile Chat",
   "version": "0.1.0",
   "identifier": "io.github.rmyou.p99mobile",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "P99 Mobile",
+        "title": "P99 Mobile Chat",
         "width": 430,
         "height": 850,
         "minWidth": 340,

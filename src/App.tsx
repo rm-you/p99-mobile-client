@@ -1,14 +1,30 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
-import { CHANNELS, MAX_RECORDS, matchesChannel, recordText } from "./protocol";
+import {
+  CHANNELS,
+  MAX_RECORDS,
+  matchesChannels,
+  recordText,
+  isEmptyGuildMotd,
+} from "./protocol";
 import type {
   AppEvent,
   ChatRecord,
   ConnectRequest,
   SessionStatus,
+  ItemLink,
+  ChatChannel,
+  ConnectionStage,
 } from "./protocol";
 import "./App.css";
+import SavedProfiles, { profileLabel } from "./SavedProfiles";
+import type { SavedProfile, VaultStatus } from "./SavedProfiles";
+import ConfirmDialog from "./ConfirmDialog";
+import ItemModal from "./ItemModal";
+import MessageRow from "./MessageRow";
+import { connectionDisplay } from "./connection";
+import { zoneName } from "./zones";
 
 const initialSettings: ConnectRequest = {
   user: "",
@@ -16,61 +32,48 @@ const initialSettings: ConnectRequest = {
   character: "",
   server: "green",
 };
+interface SavedSettings {
+  version: number;
+  server: ConnectRequest["server"];
+  channels: ChatChannel[];
+  follow: boolean;
+}
 const channelLabel = (name: string) =>
   name === "ooc" ? "OOC" : name.replace(/_/g, " ");
 
-function MessageRow({ record }: { record: ChatRecord }) {
-  const links = [
-    ...(record.item_links ?? []),
-    ...(record.arguments?.flatMap((argument) => argument.item_links ?? []) ??
-      []),
-  ];
-  return (
-    <article className={`message channel-${record.channel_name ?? "system"}`}>
-      <div className="message-meta">
-        <span className="channel-name">
-          {channelLabel(record.channel_name ?? "system")}
-        </span>
-        <strong>
-          {record.sender ||
-            (record.type === "decode_error" ? "Notice" : "Norrath")}
-        </strong>
-        {record.target && <span className="recipient">to {record.target}</span>}
-        <time dateTime={record.timestamp}>
-          {new Date(record.timestamp).toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
-        </time>
-      </div>
-      <p>{recordText(record)}</p>
-      {links.length > 0 && (
-        <div className="item-links">
-          {links.map((link, index) => (
-            <span
-              className="item-link"
-              key={`${link.item_id}-${index}`}
-              title={`Item ${link.item_id} · ${link.body}`}
-            >
-              ◇ {link.text}
-            </span>
-          ))}
-        </div>
-      )}
-    </article>
-  );
-}
-
 export default function App() {
   const [settings, setSettings] = useState(initialSettings);
+  const [ready, setReady] = useState(false);
+  const [persist, setPersist] = useState(false);
+  const [vault, setVault] = useState<VaultStatus>({
+    available: false,
+    profiles: [],
+    legacySaved: false,
+  });
+  const [editing, setEditing] = useState<SavedProfile | "legacy" | null>(null);
+  const [sessionIdentity, setSessionIdentity] = useState<Pick<
+    SavedProfile,
+    "character" | "server"
+  > | null>(null);
+  const [confirmation, setConfirmation] = useState<
+    "disconnect" | "legacy" | SavedProfile | null
+  >(null);
+  const [pendingLogin, setPendingLogin] = useState<ConnectRequest | null>(null);
+  const [vaultBusy, setVaultBusy] = useState(false);
+  const vaultBusyRef = useRef(false);
+  const saveQueue = useRef(Promise.resolve());
   const [tab, setTab] = useState<"chat" | "settings">("settings");
+  const [selectedItem, setSelectedItem] = useState<ItemLink | null>(null);
   const [records, setRecords] = useState<ChatRecord[]>([]);
-  const [channel, setChannel] = useState("all");
+  const [channels, setChannels] = useState<ChatChannel[]>([...CHANNELS]);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [status, setStatus] = useState<SessionStatus | null>(null);
+  const [stage, setStage] = useState<ConnectionStage>("connecting_login");
   const [active, setActive] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState("");
-  const [diagnostic, setDiagnostic] = useState("");
+  const [retrying, setRetrying] = useState(false);
+  const [now, setNow] = useState(Date.now);
   const [follow, setFollow] = useState(true);
   const [query, setQuery] = useState("");
   const generation = useRef(0);
@@ -78,9 +81,187 @@ export default function App() {
   const list = useRef<HTMLDivElement>(null);
   const native = isTauri();
 
+  useEffect(() => {
+    if (!active) return;
+    const refresh = () => setNow(Date.now());
+    const timer = setInterval(refresh, 5000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [active]);
+
+  useEffect(() => {
+    if (!native) {
+      setReady(true);
+      return;
+    }
+    let cancelled = false;
+    void Promise.allSettled([
+      invoke<SavedSettings>("load_settings"),
+      invoke<VaultStatus>("credential_status"),
+    ]).then(([preferences, credentials]) => {
+      if (cancelled) return;
+      if (preferences.status === "fulfilled") {
+        const value = preferences.value;
+        setSettings((previous) => ({
+          ...previous,
+          server: value.server,
+        }));
+        setChannels(value.channels);
+        setFollow(value.follow);
+        setPersist(true);
+      } else
+        setError(
+          "Saved settings could not be loaded. Changes will not be saved this time.",
+        );
+      if (credentials.status === "fulfilled") {
+        setVault(credentials.value);
+      } else
+        setError(
+          "Saved login could not be checked. You can still enter your credentials manually.",
+        );
+      setReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [native]);
+
+  // Persist only an explicit allowlist of nonsecret preferences. Serial writes
+  // prevent an older asynchronous save from winning over a newer selection.
+  useEffect(() => {
+    if (!native || !ready || !persist) return;
+    const timer = setTimeout(() => {
+      const preferences: SavedSettings = {
+        version: 2,
+        server: settings.server,
+        channels,
+        follow,
+      };
+      saveQueue.current = saveQueue.current
+        .then(() => invoke<void>("save_settings", { settings: preferences }))
+        .catch(() => {
+          setError(
+            "Settings could not be saved. Your current connection is unaffected.",
+          );
+        });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [native, ready, persist, settings.server, channels, follow]);
+
+  function editProfile(profile: SavedProfile | "legacy" | null) {
+    setEditing(profile);
+    setSettings((previous) => ({
+      ...previous,
+      user: "",
+      pass: "",
+      character: "",
+      ...(profile && profile !== "legacy"
+        ? { character: profile.character, server: profile.server }
+        : {}),
+    }));
+    setError("");
+  }
+
+  async function saveProfile(connectionLogin?: ConnectRequest) {
+    if (
+      !native ||
+      vaultBusyRef.current ||
+      (activeRef.current && !connectionLogin)
+    )
+      return;
+    vaultBusyRef.current = true;
+    setVaultBusy(true);
+    setError("");
+    const input = connectionLogin ?? settings;
+    const matching =
+      connectionLogin &&
+      vault.profiles.find(
+        (profile) =>
+          profile.server === connectionLogin.server &&
+          profile.character.toLowerCase() ===
+            connectionLogin.character.toLowerCase(),
+      );
+    try {
+      const profile = await invoke<SavedProfile>("save_profile", {
+        request: {
+          id: connectionLogin
+            ? matching
+              ? matching.id
+              : null
+            : editing === "legacy"
+              ? "legacy"
+              : (editing?.id ?? null),
+          character: input.character.trim(),
+          server: input.server,
+          user: input.user.trim(),
+          pass: input.pass,
+        },
+      });
+      setVault((previous) => ({
+        ...previous,
+        profiles: [
+          ...previous.profiles.filter((p) => p.id !== profile.id),
+          profile,
+        ],
+      }));
+      if (!connectionLogin) editProfile(null);
+      else setSettings((previous) => ({ ...previous, user: "", pass: "" }));
+      // Refresh migration status only after the new protected entry is durable.
+      try {
+        setVault(await invoke<VaultStatus>("credential_status"));
+      } catch {
+        setError("Character saved. Restart the app later to refresh the list.");
+      }
+    } catch (failure) {
+      setError(
+        typeof failure === "string"
+          ? failure
+          : "Character was not saved. Unlock your device and try again.",
+      );
+    } finally {
+      vaultBusyRef.current = false;
+      setVaultBusy(false);
+    }
+  }
+
+  async function deleteProfile(profile: SavedProfile | "legacy") {
+    if (!native || vaultBusyRef.current || activeRef.current) return;
+    vaultBusyRef.current = true;
+    setVaultBusy(true);
+    setError("");
+    try {
+      if (profile === "legacy") await invoke("forget_legacy");
+      else await invoke("forget_profile", { id: profile.id });
+      setVault((previous) =>
+        profile === "legacy"
+          ? { ...previous, legacySaved: false }
+          : {
+              ...previous,
+              profiles: previous.profiles.filter((p) => p.id !== profile.id),
+            },
+      );
+      if (
+        editing === profile ||
+        (editing &&
+          editing !== "legacy" &&
+          profile !== "legacy" &&
+          editing.id === profile.id)
+      )
+        editProfile(null);
+    } catch {
+      setError("Could not delete the saved character. Try again.");
+    } finally {
+      vaultBusyRef.current = false;
+      setVaultBusy(false);
+    }
+  }
+
   const visible = records.filter(
     (record) =>
-      matchesChannel(record, channel) &&
+      matchesChannels(record, channels) &&
       `${record.sender ?? ""} ${recordText(record)}`
         .toLocaleLowerCase()
         .includes(query.toLocaleLowerCase()),
@@ -90,6 +271,7 @@ export default function App() {
     if (!native || !activeRef.current) return;
     setStopping(true);
     try {
+      setPendingLogin(null);
       await invoke("disconnect");
       activeRef.current = false;
       setActive(false);
@@ -106,15 +288,34 @@ export default function App() {
   useEffect(() => {
     if (follow && list.current)
       list.current.scrollTop = list.current.scrollHeight;
-  }, [records, channel, query, follow, tab]);
+  }, [records, channels, query, follow, tab, filtersOpen]);
 
-  async function connect(event: FormEvent) {
-    event.preventDefault();
-    if (!native || activeRef.current || stopping) return;
+  async function connect(profile?: SavedProfile) {
+    if (
+      !native ||
+      !ready ||
+      activeRef.current ||
+      stopping ||
+      vaultBusyRef.current
+    )
+      return;
+    const request = {
+      ...settings,
+      user: settings.user.trim(),
+      character: settings.character.trim(),
+    };
     const id = ++generation.current;
     setError("");
-    setDiagnostic("");
+    setRetrying(false);
+    setNow(Date.now());
     setStatus(null);
+    setStage("connecting_login");
+    setSessionIdentity(
+      profile ?? {
+        character: settings.character.trim(),
+        server: settings.server,
+      },
+    );
     setRecords([]);
     activeRef.current = true;
     setActive(true);
@@ -122,46 +323,65 @@ export default function App() {
     onEvent.onmessage = (event) => {
       if (id !== generation.current) return;
       if (event.type === "finished") {
+        setPendingLogin(null);
         activeRef.current = false;
         setActive(false);
         setStatus((previous) =>
           previous ? { ...previous, state: "stopped" } : null,
         );
-        if (event.data.error) setError(event.data.error);
+        if (event.data.error === "invalid_credentials") {
+          setRetrying(false);
+          setTab("settings");
+          setError(
+            "The login account or password was rejected. Check your login details and try again.",
+          );
+        } else if (event.data.error) {
+          setError("Connection ended. Please try connecting again.");
+        }
         return;
       }
       const message = event.data;
       switch (message.type) {
         case "status":
+          if (message.data.state === "connecting") setStage("connecting_login");
           setStatus(message.data);
+          setNow(Date.now());
+          setRetrying(false);
+          break;
+        case "progress":
+          setStage(message.data);
           break;
         case "record":
+          if (isEmptyGuildMotd(message.data)) break;
           setRecords((previous) => [
             ...previous.slice(-(MAX_RECORDS - 1)),
             message.data,
           ]);
           break;
         case "diagnostic":
-          setDiagnostic(message.data);
+          // Transport details are not user-facing connection progress.
           break;
         case "reconnecting":
-          setDiagnostic(
-            `Connection ended: ${message.data.error}. Retrying in ${message.data.delay_seconds}s.`,
-          );
+          setRetrying(true);
           break;
       }
     };
     try {
-      await invoke("connect", {
-        request: {
-          ...settings,
-          user: settings.user.trim(),
-          character: settings.character.trim(),
-        },
-        onEvent,
-      });
+      if (profile) {
+        const saved = await invoke<SavedProfile>("connect_saved", {
+          id: profile.id,
+          onEvent,
+        });
+        setSessionIdentity(saved);
+      } else
+        await invoke("connect", {
+          request,
+          onEvent,
+        });
       setSettings((previous) => ({ ...previous, pass: "" }));
       setTab("chat");
+      if (!profile && vault.available && activeRef.current)
+        setPendingLogin(request);
     } catch (failure) {
       activeRef.current = false;
       setActive(false);
@@ -173,42 +393,43 @@ export default function App() {
     }
   }
 
-  const stateLabel = stopping
-    ? "Disconnecting"
-    : active
-      ? status?.state === "connected"
-        ? "Connected"
-        : status?.state === "zoning"
-          ? "Entering zone"
-          : "Connecting"
-      : "Offline";
+  function submitConnection(event: FormEvent) {
+    event.preventDefault();
+    if (editing) void saveProfile();
+    else void connect();
+  }
+  const credentialsComplete = !!settings.user.trim() && !!settings.pass;
+  const canSave =
+    !!settings.character.trim() &&
+    (credentialsComplete || (!!editing && !settings.user && !settings.pass));
+  const disabled = active || stopping || vaultBusy || !ready;
+  const connection = connectionDisplay(
+    active,
+    stopping,
+    status,
+    retrying,
+    now,
+    stage,
+  );
   return (
     <main className="app-shell">
       <header className="app-header">
-        <div className="brand-mark" aria-hidden="true">
-          ✦
-        </div>
-        <div>
-          <h1>
-            P99 <span>Mobile</span>
-          </h1>
-          <p>Your window into Norrath</p>
+        <div className="header-title">
+          <h1>P99 Mobile Chat</h1>
+          {tab === "chat" && sessionIdentity?.character && (
+            <p className="session-context">
+              {sessionIdentity.character} · P99{" "}
+              {sessionIdentity.server === "green" ? "Green" : "Blue"}
+              {status?.zone ? ` · ${zoneName(status.zone)}` : ""}
+            </p>
+          )}
         </div>
         <span
-          className={`connection-badge ${status?.state === "connected" && active ? "online" : ""}`}
+          className={`connection-status ${connection.healthy ? "online" : ""}`}
         >
-          <i />
-          {stateLabel}
+          {connection.label}
         </span>
       </header>
-      <section className="character-bar">
-        <div>
-          <span className={`server-dot ${settings.server}`} />
-          <strong>{settings.character || "No character selected"}</strong>
-          <span className="server-name">{settings.server}</span>
-        </div>
-        <span>{status?.zone || "Select your character to begin"}</span>
-      </section>
       {error && (
         <div role="alert" className="notice error">
           {error}
@@ -222,18 +443,70 @@ export default function App() {
 
       {tab === "settings" ? (
         <section className="settings-view">
-          <div className="section-heading">
-            <span className="eyebrow">CONNECTION</span>
-            <h2>Return to Norrath</h2>
-            <p>
-              Connect an existing character to read chat from their current
-              zone.
-            </p>
-          </div>
-          <form onSubmit={connect}>
-            <fieldset disabled={active || stopping}>
-              <legend>Choose your server</legend>
-              <div className="server-picker">
+          <SavedProfiles
+            vault={vault}
+            disabled={disabled}
+            onConnect={(profile) => void connect(profile)}
+            onEdit={editProfile}
+            onDelete={setConfirmation}
+          />
+          <form onSubmit={submitConnection}>
+            <h2 className="manual-heading">
+              {editing ? "Edit saved character" : "Manual connection"}
+            </h2>
+            <fieldset disabled={active || stopping || vaultBusy || !ready}>
+              <label>
+                Login account
+                <input
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  autoComplete="username"
+                  required={!editing}
+                  value={settings.user}
+                  onChange={(event) =>
+                    setSettings((previous) => ({
+                      ...previous,
+                      user: event.target.value,
+                    }))
+                  }
+                  placeholder={
+                    editing
+                      ? "leave blank to keep saved login"
+                      : "login server account"
+                  }
+                />
+              </label>
+              <label>
+                Password
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  required={!editing}
+                  value={settings.pass}
+                  onChange={(event) =>
+                    setSettings((previous) => ({
+                      ...previous,
+                      pass: event.target.value,
+                    }))
+                  }
+                  placeholder={
+                    editing
+                      ? "leave blank to keep saved password"
+                      : active
+                        ? "in use for this session"
+                        : "login password"
+                  }
+                />
+              </label>
+              <span className="server-label" id="server-label">
+                Server
+              </span>
+              <div
+                className="server-picker"
+                role="group"
+                aria-labelledby="server-label"
+              >
                 {(["green", "blue"] as const).map((server) => (
                   <button
                     className={settings.server === server ? "selected" : ""}
@@ -244,47 +517,10 @@ export default function App() {
                       setSettings((previous) => ({ ...previous, server }))
                     }
                   >
-                    <span className={`server-dot ${server}`} />
                     P99 {server}
                   </button>
                 ))}
               </div>
-              <label>
-                Login account
-                <input
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  autoComplete="username"
-                  required
-                  value={settings.user}
-                  onChange={(event) =>
-                    setSettings((previous) => ({
-                      ...previous,
-                      user: event.target.value,
-                    }))
-                  }
-                  placeholder="Your login server account"
-                />
-              </label>
-              <label>
-                Password
-                <input
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  value={settings.pass}
-                  onChange={(event) =>
-                    setSettings((previous) => ({
-                      ...previous,
-                      pass: event.target.value,
-                    }))
-                  }
-                  placeholder={
-                    active ? "In use for this session" : "Your login password"
-                  }
-                />
-              </label>
               <label>
                 Character name
                 <input
@@ -299,43 +535,126 @@ export default function App() {
                       character: event.target.value,
                     }))
                   }
-                  placeholder="Your character's name"
+                  placeholder="character name"
                 />
               </label>
+              {editing && (
+                <p className="storage-hint">
+                  Leave both account and password blank to keep the saved login.
+                </p>
+              )}
+              {!vault.available && (
+                <p className="storage-hint">
+                  Enable a supported device lock or biometric to save your
+                  login. You can also connect without saving.
+                </p>
+              )}
+              {editing && (
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => editProfile(null)}
+                >
+                  Cancel editing
+                </button>
+              )}
             </fieldset>
             {active ? (
               <button
                 type="button"
                 className="primary-button disconnect"
                 disabled={stopping}
-                onClick={() => void disconnect()}
+                onClick={() => setConfirmation("disconnect")}
               >
                 {stopping ? "Disconnecting…" : "Disconnect"}
               </button>
             ) : (
               <button
                 className="primary-button"
-                disabled={!native || stopping}
+                disabled={
+                  !native ||
+                  stopping ||
+                  vaultBusy ||
+                  !ready ||
+                  (!!editing && (!canSave || !vault.available))
+                }
                 type="submit"
               >
-                Connect to character <span>→</span>
+                {!ready
+                  ? "Loading settings…"
+                  : editing
+                    ? "Save changes"
+                    : "Login"}
               </button>
             )}
           </form>
-          <div className="quiet-note">
-            <span>◇</span>
-            <p>
-              Credentials stay in memory for this session. This first version
-              does not save your password. We try to stay connected in the
-              background, but your phone may pause or stop the app.
-            </p>
-          </div>
+          <p className="settings-note">
+            Settings save automatically. Saving your login is optional. Your
+            phone may pause connections in the background.
+          </p>
         </section>
       ) : (
-        <section className="chat-view">
+        <section className="chat-view" aria-label="Chat">
+          <details
+            className="chat-filters"
+            open={filtersOpen}
+            onToggle={(event) => setFiltersOpen(event.currentTarget.open)}
+          >
+            <summary>
+              Filters
+              {channels.length !== CHANNELS.length || query ? " · Active" : ""}
+            </summary>
+            <fieldset className="channel-filters">
+              <legend className="sr-only">Chat channels</legend>
+              <div className="channel-actions">
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => setChannels([...CHANNELS])}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => setChannels([])}
+                >
+                  None
+                </button>
+              </div>
+              <div className="channel-options">
+                {CHANNELS.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    className={`channel-toggle channel-${name}`}
+                    aria-pressed={channels.includes(name)}
+                    onClick={() =>
+                      setChannels((previous) =>
+                        previous.includes(name)
+                          ? previous.filter((channel) => channel !== name)
+                          : CHANNELS.filter(
+                              (channel) =>
+                                channel === name || previous.includes(channel),
+                            ),
+                      )
+                    }
+                  >
+                    {channelLabel(name)}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            <input
+              type="search"
+              aria-label="Search retained messages"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="search messages"
+            />
+          </details>
           <div className="chat-toolbar">
-            <h2>Conversation</h2>
-            <span>{records.length.toLocaleString()} retained</span>
+            <span>{records.length.toLocaleString()} messages</span>
             <button
               className="text-button"
               type="button"
@@ -345,29 +664,6 @@ export default function App() {
               Clear
             </button>
           </div>
-          <div className="channels" aria-label="Chat channel">
-            {CHANNELS.map((name) => (
-              <button
-                key={name}
-                type="button"
-                className={channel === name ? "selected" : ""}
-                aria-pressed={channel === name}
-                onClick={() => setChannel(name)}
-              >
-                {channelLabel(name)}
-              </button>
-            ))}
-          </div>
-          <label className="search-label">
-            <span aria-hidden="true">⌕</span>
-            <input
-              type="search"
-              aria-label="Search retained messages"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search messages or players"
-            />
-          </label>
           <div
             className="messages"
             ref={list}
@@ -387,31 +683,35 @@ export default function App() {
                 <MessageRow
                   key={`${record.session_id}-${record.message_id}`}
                   record={record}
+                  onItem={setSelectedItem}
                 />
               ))
             ) : (
               <div className="empty-state">
-                <div aria-hidden="true">✧</div>
                 <h3>
-                  {records.length
-                    ? "No matching messages"
-                    : active
-                      ? "Listening to Norrath"
-                      : "The conversation awaits"}
+                  {!channels.length
+                    ? "No channels selected"
+                    : records.length
+                      ? "No matching messages"
+                      : active
+                        ? "Waiting for messages"
+                        : "No messages yet"}
                 </h3>
                 <p>
-                  {records.length
-                    ? "Try another channel or search."
-                    : active
-                      ? "Incoming messages will appear here."
-                      : "Connect your character to see live game chat."}
+                  {!channels.length
+                    ? "Open Filters to choose which channels to show."
+                    : records.length
+                      ? "Try another channel or search."
+                      : active
+                        ? "Incoming messages will appear here."
+                        : "Connect your character to see live game chat."}
                 </p>
                 {!active && (
                   <button
                     className="text-button"
                     onClick={() => setTab("settings")}
                   >
-                    Set up connection →
+                    Set up connection
                   </button>
                 )}
               </div>
@@ -419,39 +719,119 @@ export default function App() {
           </div>
           {!follow && visible.length > 0 && (
             <button className="latest-button" onClick={() => setFollow(true)}>
-              ↓ Latest messages
+              Latest messages
             </button>
           )}
-          <div className="chat-footer">
-            <span title={diagnostic}>
-              {active
-                ? diagnostic || "Waiting for server traffic…"
-                : "Offline · Messages remain until cleared or the app closes"}
-            </span>
-            {active && (
-              <button
-                className="text-button"
-                disabled={stopping}
-                onClick={() => void disconnect()}
+        </section>
+      )}
+      {(active || status) && (
+        <div
+          className={`chat-footer ${connection.busy ? "connection-progress" : ""}`}
+        >
+          <div
+            className={`connection-feedback ${connection.healthy ? "online" : ""}`}
+          >
+            {connection.progress !== null && (
+              <div
+                className="signin-progress"
+                role="progressbar"
+                aria-label="Sign-in progress"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={connection.progress}
+                aria-valuetext={`${connection.progress}% · ${connection.detail}`}
               >
-                Disconnect
-              </button>
+                <span style={{ width: `${connection.progress}%` }} />
+              </div>
+            )}
+            <span
+              className="connection-detail"
+              role="status"
+              aria-label="Connection health"
+            >
+              {connection.detail}
+            </span>
+            {connection.progress !== null && (
+              <span className="connection-percentage" aria-hidden="true">
+                {connection.progress}%
+              </span>
             )}
           </div>
-        </section>
+          {active && tab === "chat" && (
+            <button
+              className="text-button"
+              disabled={stopping}
+              onClick={() => setConfirmation("disconnect")}
+            >
+              Disconnect
+            </button>
+          )}
+        </div>
+      )}
+      {pendingLogin && (
+        <ConfirmDialog
+          title={
+            vault.profiles.some(
+              (profile) =>
+                profile.server === pendingLogin.server &&
+                profile.character.toLowerCase() ===
+                  pendingLogin.character.toLowerCase(),
+            )
+              ? "Update saved login?"
+              : "Save this character?"
+          }
+          description={`Save ${pendingLogin.character} on P99 ${pendingLogin.server === "green" ? "Green" : "Blue"} with this account and password for next time? Your connection will continue either way.`}
+          confirm="Save"
+          cancel="Not now"
+          onCancel={() => setPendingLogin(null)}
+          onConfirm={() => {
+            const login = pendingLogin;
+            setPendingLogin(null);
+            void saveProfile(login);
+          }}
+        />
+      )}
+      {confirmation && (
+        <ConfirmDialog
+          title={
+            confirmation === "disconnect"
+              ? "Disconnect from P99?"
+              : "Delete saved login?"
+          }
+          description={
+            confirmation === "disconnect"
+              ? "Your character will leave the game. You can connect again whenever you're ready."
+              : confirmation === "legacy"
+                ? "Remove the previous saved account and password from this device?"
+                : `Remove ${profileLabel(confirmation)} and its saved login from this device?`
+          }
+          confirm={confirmation === "disconnect" ? "Disconnect" : "Delete"}
+          onCancel={() => setConfirmation(null)}
+          onConfirm={() => {
+            const action = confirmation;
+            setConfirmation(null);
+            if (action === "disconnect") void disconnect();
+            else void deleteProfile(action);
+          }}
+        />
+      )}
+      {selectedItem && (
+        <ItemModal item={selectedItem} onClose={() => setSelectedItem(null)} />
       )}
       <nav className="bottom-nav" aria-label="Main navigation">
         <button
           className={tab === "chat" ? "selected" : ""}
+          aria-current={tab === "chat" ? "page" : undefined}
           onClick={() => setTab("chat")}
         >
-          <span aria-hidden="true">☷</span>Chat
+          Chat
         </button>
         <button
           className={tab === "settings" ? "selected" : ""}
+          aria-current={tab === "settings" ? "page" : undefined}
           onClick={() => setTab("settings")}
         >
-          <span aria-hidden="true">⚙</span>Connection
+          Connection
         </button>
       </nav>
     </main>

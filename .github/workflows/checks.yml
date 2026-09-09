@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Verify original item snapshot
+        run: python3 scripts/import_items.py --check
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -38,7 +40,12 @@ jobs:
           rustup default stable
           rustup component add clippy rustfmt
           rustup target add aarch64-linux-android
-      - run: cargo fmt --check
-      - run: cargo test --locked --lib
-      - run: cargo clippy --locked --all-targets -- -D warnings
-      - run: cargo check --locked --target aarch64-linux-android --lib
+      - run: cargo fmt --all --check
+      - run: cargo test --locked --workspace --lib
+      - run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Check Android library
+        run: |
+          ndk_bin="$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CC_aarch64_linux_android="$ndk_bin/aarch64-linux-android24-clang"
+          export AR_aarch64_linux_android="$ndk_bin/llvm-ar"
+          cargo check --locked --target aarch64-linux-android --lib

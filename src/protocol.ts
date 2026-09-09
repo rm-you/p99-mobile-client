@@ -1,6 +1,19 @@
 export type Server = "green" | "blue";
 export type ConnectionState =
   "connecting" | "connected" | "zoning" | "disconnected" | "stopped";
+/** Ordered milestones emitted by the native client for each connection attempt. */
+export const CONNECTION_STAGES = [
+  "connecting_login",
+  "authenticating",
+  "selecting_server",
+  "connecting_world",
+  "selecting_character",
+  "connecting_zone",
+  "loading_character",
+  "entering_world",
+  "ready",
+] as const;
+export type ConnectionStage = (typeof CONNECTION_STAGES)[number];
 export interface ConnectRequest {
   user: string;
   pass: string;
@@ -13,6 +26,9 @@ export interface ItemLink {
   start: number;
   end: number;
   item_id: number;
+  /** Inclusive/exclusive UTF-8 byte offsets in the decoded message text. */
+  text_start?: number;
+  text_end?: number;
 }
 export interface Message {
   text: string;
@@ -44,25 +60,28 @@ export interface SessionStatus {
 }
 export type ClientEvent =
   | { type: "status"; data: SessionStatus }
+  | { type: "progress"; data: ConnectionStage }
   | { type: "record"; data: ChatRecord }
   | { type: "diagnostic"; data: string }
   | { type: "reconnecting"; data: { error: string; delay_seconds: number } };
 export type AppEvent =
   | { type: "client"; data: ClientEvent }
-  | { type: "finished"; data: { error: string | null } };
+  | {
+      type: "finished";
+      data: { error: "invalid_credentials" | "connection_lost" | null };
+    };
 export const MAX_RECORDS = 1500;
 export const CHANNELS = [
-  "all",
   "auction",
   "ooc",
   "guild",
   "tell",
-  "group",
   "say",
   "shout",
-  "raid",
+  "emote",
   "system",
 ] as const;
+export type ChatChannel = (typeof CHANNELS)[number];
 export function recordText(record: ChatRecord): string {
   if (record.type === "decode_error")
     return record.error ?? "A message could not be decoded.";
@@ -79,14 +98,26 @@ export function recordText(record: ChatRecord): string {
       .join(": ") || "Game message"
   );
 }
-export function matchesChannel(record: ChatRecord, channel: string): boolean {
-  if (channel === "all") return true;
-  if (channel === "system")
-    return (
-      record.type === "decode_error" ||
-      ["system", "motd", "guild_motd", "broadcast"].includes(
-        record.channel_name ?? "",
-      )
-    );
-  return record.channel_name === channel;
+export function matchesChannels(
+  record: ChatRecord,
+  channels: ChatChannel[],
+): boolean {
+  const name = record.channel_name as ChatChannel;
+  const channel =
+    record.type !== "decode_error" && CHANNELS.includes(name) ? name : "system";
+  return channels.includes(channel);
+}
+
+/** Guildless characters receive a blank MOTD at login; it is not a chat message. */
+export function isEmptyGuildMotd(record: ChatRecord): boolean {
+  return (
+    record.type === "chat" &&
+    record.channel_name === "guild_motd" &&
+    !(
+      record.text?.trim() ||
+      record.arguments?.some((argument) => argument.text.trim()) ||
+      record.item_links?.length ||
+      record.arguments?.some((argument) => argument.item_links?.length)
+    )
+  );
 }
