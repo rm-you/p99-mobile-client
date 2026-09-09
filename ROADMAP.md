@@ -29,8 +29,10 @@ Titanium channel colors, full zone names, and text navigation. Filters start
 collapsed, empty guild MOTDs are hidden, and disconnect asks for confirmation. Connection progress
 and health use plain language without transport diagnostics or counters. A subtle
 sign-in bar and percentage track completed connection steps and reset on retries.
-The catalog contains 12,122 entries derived from P99 Gear Planner's public
-Wiki/PEQ reference data. Item matching checks both names and reference IDs, and
+The catalog contains 12,122 entries in P99 Gear Planner's original SQLite snapshot
+of public Wiki/PEQ reference data. Read-only lookups format matching rows on demand,
+with a small temporary name index instead of retaining all formatted items in memory.
+Item matching checks both names and reference IDs, and
 refuses conflicting variants. Runtime Wiki requests and HTML parsing are removed.
 Earlier Android emulator validation covered inline and legacy item buttons,
 modal dismissal/focus restoration, and opening the source browser.

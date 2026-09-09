@@ -22,7 +22,9 @@ MOTDs are hidden. During sign-in, a small progress bar shows the current step
 and percentage. It advances when connection milestones complete; it does not
 estimate remaining time.
 Tap an item link to see stats from the bundled catalog of 12,122 item entries.
-This works offline with no Wiki request. Matching uses the linked name and a
+The app reads the original SQLite snapshot and formats matching rows on demand,
+without retaining the whole catalog as formatted text. This works offline with
+no Wiki request. Matching uses the linked name and a
 reference item ID; missing or conflicting entries show an unavailable message.
 **View on P99 Wiki** opens the item page in your browser only when tapped.
 The catalog contains community reference data and can have gaps; see its
@@ -139,8 +141,9 @@ credential files.
 - `src-tauri/src/lib.rs`: native commands and application lifecycle callbacks.
 - `src-tauri/src/settings.rs`: validated, atomic writes of nonsecret preferences.
 - `src-tauri/src/items.rs`: offline item lookup and safe Wiki browser URLs.
-- `src-tauri/data/`: bundled item cards, source metadata, and update instructions.
-- `scripts/import_items.py`: deterministic conversion of the public source snapshot.
+- `src-tauri/src/items/`: indexed SQLite lookup and formatting of classic item stats.
+- `src-tauri/data/`: original SQLite snapshot, source metadata, and update instructions.
+- `scripts/import_items.py`: verifies and copies the source snapshot without changing it.
 - `src/itemText.ts`: converts decoded UTF-8 item ranges for inline rendering.
   Records without these ranges retain separate tappable item buttons.
 - `src-tauri/secure-login/`: native Keystore/Keychain integration. Its Rust API

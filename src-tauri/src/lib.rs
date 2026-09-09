@@ -179,8 +179,10 @@ fn save_settings(settings: Settings, store: State<'_, SettingsStore>) -> Result<
 
 /// Read bundled item facts without accessing the network or account context.
 #[tauri::command]
-fn item_details(item_id: u32, name: String) -> Result<items::ItemDetails, String> {
-    items::lookup(item_id, &name)
+async fn item_details(item_id: u32, name: String) -> Result<items::ItemDetails, String> {
+    tauri::async_runtime::spawn_blocking(move || items::lookup(item_id, &name))
+        .await
+        .map_err(|_| "Unable to read item details.".to_owned())?
 }
 
 /// Open only a Wiki article in the system browser, outside the privileged app view.
