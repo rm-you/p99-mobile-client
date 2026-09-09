@@ -15,3 +15,7 @@ config.json
 *.p12
 *.mobileprovision
 .DS_Store
+src-tauri/secure-login/target/
+src-tauri/secure-login/.tauri/
+src-tauri/secure-login/android/build/
+src-tauri/secure-login/android/.gradle/

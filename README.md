@@ -16,11 +16,29 @@ channel or search the most recent 1,500 messages. Item link labels, IDs, and
 original link bodies remain available in the received records. Messages render
 as text, never HTML. Clearing the view removes its retained messages.
 
-This initial version keeps settings, credentials, and chat in memory only.
-The password input clears after the native worker starts; the worker retains
-credentials while the session is running so it can reconnect. Disconnect stops
-that worker before another session can start. There is no password storage,
-chat export, or message sending yet.
+Server, character, channel filter, and follow-latest preferences are saved on
+this device. Account credentials are saved only when you choose **Save login
+securely**. Otherwise they stay in memory for the current session. A saved
+login appears locked after restarting the app; **Unlock and connect** asks for
+your device authentication and passes the credentials directly to the Rust
+worker. The account and password are not filled back into the webview.
+
+- Android uses an AES-256-GCM key in Android Keystore, with authentication
+  required for each encryption or decryption. Android 11+ supports a strong
+  biometric or device PIN/pattern/password; Android 7–10 requires an enrolled
+  strong biometric. Encrypted data stays in the app's no-backup directory.
+- iOS uses a device-only Keychain item requiring user presence (Face ID,
+  Touch ID, or device passcode). A device passcode must be configured.
+- Without suitable device authentication, you can connect by entering your
+  credentials each time. There is no plaintext storage fallback. Native desktop
+  development also uses manual login.
+
+Use **Forget saved login** to remove the stored secret, or **Use different
+login** to enter another account. If a key becomes unavailable after changing
+your device security settings, forget the old login and save it again. Credentials
+remain in the active worker's memory for retries without repeated unlock prompts.
+**Disconnect** stops that worker before another session can start. Chat stays in
+memory; chat export and message sending are not implemented.
 
 Background connections are best effort. Switching apps, locking the screen, or
 losing window focus does not deliberately disconnect the session or cancel a
@@ -30,14 +48,16 @@ app exit also requests shutdown.
 
 The OS may suspend networking or terminate the app. If the process survives,
 the same worker can resume and retry a lost connection when allowed to run.
-After process termination, reopen the app and enter your credentials again.
+After process termination, reopen the app and unlock the saved login or enter
+your credentials again.
 This version does not register an Android foreground service or request extra
 iOS background execution time. Background duration and lifecycle behavior still
 need testing on both platforms; continuous logging is not guaranteed. See the
 [Android process lifecycle](https://developer.android.com/guide/components/activities/process-lifecycle)
 and [iOS background execution documentation](https://developer.apple.com/documentation/uikit/extending-your-app-s-background-execution-time).
 
-See the [follow-up priorities](ROADMAP.md) for secure settings storage and chat UI improvements.
+See the [roadmap](ROADMAP.md) for platform validation, chat UI improvements, and
+background connection work.
 
 ## Development
 
@@ -59,10 +79,10 @@ if building on Windows so Tauri can create its native library symbolic links.
 Then run:
 
 ```sh
-npm run tauri android init
-npm run tauri android dev
+npm run tauri -- android init
+npm run tauri -- android dev
 # Build a release package:
-npm run tauri android build
+npm run tauri -- android build
 ```
 
 ### iOS
@@ -70,10 +90,10 @@ npm run tauri android build
 On a Mac with Xcode and the iOS prerequisites configured:
 
 ```sh
-npm run tauri ios init
-npm run tauri ios dev
+npm run tauri -- ios init
+npm run tauri -- ios dev
 # Build a release package:
-npm run tauri ios build
+npm run tauri -- ios build
 ```
 
 Platform project generation, device signing, and store distribution are separate
@@ -87,6 +107,10 @@ credential files.
 - `src-tauri/src/session.rs`: one cancellable network worker, configuration
   validation, and serial session shutdown.
 - `src-tauri/src/lib.rs`: native commands and application lifecycle callbacks.
+- `src-tauri/src/settings.rs`: validated, atomic writes of nonsecret preferences.
+- `src-tauri/secure-login/`: native Keystore/Keychain integration. Its Rust API
+  exposes no credential-reading command to the webview. Android key use is bound
+  to the authenticated `CryptoObject`; iOS access is enforced by Keychain ACLs.
 - `p99-logger-client`: protocol handling, authentication, decoding, retries, and
   the bundled asset checksum inventory. These stay in the library repository.
 
@@ -100,12 +124,17 @@ npm run build
 npm test
 npm run format:check
 cd src-tauri
-cargo fmt --check
-cargo test --lib
-cargo clippy --all-targets -- -D warnings
+cargo fmt --all --check
+cargo test --workspace --lib
+cargo clippy --workspace --all-targets -- -D warnings
 ```
 
 Rust desktop checks require the platform's Tauri system libraries even though
 the unit tests do not launch a webview. Tests contain synthetic examples only.
 The frontend and Rust checks do not establish successful mobile packaging or
 an actual phone-to-P99 connection; those require device testing.
+
+Secure storage implementation references:
+[Android authentication-bound keys](https://developer.android.com/identity/sign-in/biometric-auth#auth-per-use-keys)
+and [Apple Keychain access control](https://developer.apple.com/documentation/localauthentication/accessing-keychain-items-with-face-id-or-touch-id).
+The iOS implementation still requires an Xcode build and device validation.

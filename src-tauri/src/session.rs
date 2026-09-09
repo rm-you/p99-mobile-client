@@ -7,7 +7,7 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-#[derive(Clone, Copy, Deserialize)]
+#[derive(Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Server {
     Green,
@@ -23,7 +23,7 @@ impl Server {
     }
 }
 
-// Credentials are accepted over local IPC and are never logged or persisted.
+// Manual credentials arrive over local IPC and are never logged.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConnectRequest {

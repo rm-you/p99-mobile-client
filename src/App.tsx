@@ -16,6 +16,17 @@ const initialSettings: ConnectRequest = {
   character: "",
   server: "green",
 };
+interface SavedSettings {
+  version: number;
+  server: ConnectRequest["server"];
+  character: string;
+  channel: string;
+  follow: boolean;
+}
+interface VaultStatus {
+  available: boolean;
+  saved: boolean;
+}
 const channelLabel = (name: string) =>
   name === "ooc" ? "OOC" : name.replace(/_/g, " ");
 
@@ -63,6 +74,16 @@ function MessageRow({ record }: { record: ChatRecord }) {
 
 export default function App() {
   const [settings, setSettings] = useState(initialSettings);
+  const [ready, setReady] = useState(false);
+  const [persist, setPersist] = useState(false);
+  const [vault, setVault] = useState<VaultStatus>({
+    available: false,
+    saved: false,
+  });
+  const [useSaved, setUseSaved] = useState(false);
+  const [vaultBusy, setVaultBusy] = useState(false);
+  const vaultBusyRef = useRef(false);
+  const saveQueue = useRef(Promise.resolve());
   const [tab, setTab] = useState<"chat" | "settings">("settings");
   const [records, setRecords] = useState<ChatRecord[]>([]);
   const [channel, setChannel] = useState("all");
@@ -77,6 +98,106 @@ export default function App() {
   const activeRef = useRef(false);
   const list = useRef<HTMLDivElement>(null);
   const native = isTauri();
+
+  useEffect(() => {
+    if (!native) {
+      setReady(true);
+      return;
+    }
+    let cancelled = false;
+    void Promise.allSettled([
+      invoke<SavedSettings>("load_settings"),
+      invoke<VaultStatus>("credential_status"),
+    ]).then(([preferences, credentials]) => {
+      if (cancelled) return;
+      if (preferences.status === "fulfilled") {
+        const value = preferences.value;
+        setSettings((previous) => ({
+          ...previous,
+          server: value.server,
+          character: value.character,
+        }));
+        setChannel(value.channel);
+        setFollow(value.follow);
+        setPersist(true);
+      } else
+        setError(
+          "Saved settings could not be loaded. Changes will not be saved this time.",
+        );
+      if (credentials.status === "fulfilled") {
+        setVault(credentials.value);
+        setUseSaved(credentials.value.saved);
+      } else
+        setError(
+          "Saved login could not be checked. You can still enter your credentials manually.",
+        );
+      setReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [native]);
+
+  // Persist only an explicit allowlist of nonsecret preferences. Serial writes
+  // prevent an older asynchronous save from winning over a newer selection.
+  useEffect(() => {
+    if (!native || !ready || !persist) return;
+    const timer = setTimeout(() => {
+      const preferences: SavedSettings = {
+        version: 1,
+        server: settings.server,
+        character: settings.character,
+        channel,
+        follow,
+      };
+      saveQueue.current = saveQueue.current
+        .then(() => invoke<void>("save_settings", { settings: preferences }))
+        .catch(() => {
+          setError(
+            "Settings could not be saved. Your current connection is unaffected.",
+          );
+        });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [
+    native,
+    ready,
+    persist,
+    settings.server,
+    settings.character,
+    channel,
+    follow,
+  ]);
+
+  async function changeSavedLogin(action: "save" | "forget") {
+    if (!native || vaultBusyRef.current || activeRef.current) return;
+    vaultBusyRef.current = true;
+    setVaultBusy(true);
+    setError("");
+    try {
+      if (action === "save") {
+        await invoke("save_credentials", {
+          credentials: { user: settings.user.trim(), pass: settings.pass },
+        });
+        setVault((previous) => ({ ...previous, saved: true }));
+        setUseSaved(true);
+      } else {
+        await invoke("forget_credentials");
+        setVault((previous) => ({ ...previous, saved: false }));
+        setUseSaved(false);
+      }
+      setSettings((previous) => ({ ...previous, user: "", pass: "" }));
+    } catch {
+      setError(
+        action === "save"
+          ? "Login was not saved. Unlock your device and try again."
+          : "Could not forget the saved login. Try again.",
+      );
+    } finally {
+      vaultBusyRef.current = false;
+      setVaultBusy(false);
+    }
+  }
 
   const visible = records.filter(
     (record) =>
@@ -110,7 +231,14 @@ export default function App() {
 
   async function connect(event: FormEvent) {
     event.preventDefault();
-    if (!native || activeRef.current || stopping) return;
+    if (
+      !native ||
+      !ready ||
+      activeRef.current ||
+      stopping ||
+      vaultBusyRef.current
+    )
+      return;
     const id = ++generation.current;
     setError("");
     setDiagnostic("");
@@ -152,14 +280,21 @@ export default function App() {
       }
     };
     try {
-      await invoke("connect", {
-        request: {
-          ...settings,
-          user: settings.user.trim(),
+      if (useSaved)
+        await invoke("connect_saved", {
+          server: settings.server,
           character: settings.character.trim(),
-        },
-        onEvent,
-      });
+          onEvent,
+        });
+      else
+        await invoke("connect", {
+          request: {
+            ...settings,
+            user: settings.user.trim(),
+            character: settings.character.trim(),
+          },
+          onEvent,
+        });
       setSettings((previous) => ({ ...previous, pass: "" }));
       setTab("chat");
     } catch (failure) {
@@ -231,7 +366,7 @@ export default function App() {
             </p>
           </div>
           <form onSubmit={connect}>
-            <fieldset disabled={active || stopping}>
+            <fieldset disabled={active || stopping || vaultBusy || !ready}>
               <legend>Choose your server</legend>
               <div className="server-picker">
                 {(["green", "blue"] as const).map((server) => (
@@ -249,42 +384,106 @@ export default function App() {
                   </button>
                 ))}
               </div>
-              <label>
-                Login account
-                <input
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  autoComplete="username"
-                  required
-                  value={settings.user}
-                  onChange={(event) =>
-                    setSettings((previous) => ({
-                      ...previous,
-                      user: event.target.value,
-                    }))
-                  }
-                  placeholder="Your login server account"
-                />
-              </label>
-              <label>
-                Password
-                <input
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  value={settings.pass}
-                  onChange={(event) =>
-                    setSettings((previous) => ({
-                      ...previous,
-                      pass: event.target.value,
-                    }))
-                  }
-                  placeholder={
-                    active ? "In use for this session" : "Your login password"
-                  }
-                />
-              </label>
+              {useSaved ? (
+                <div className="saved-login">
+                  <strong>Saved login is locked</strong>
+                  <p>Unlock with your device when you connect.</p>
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => setUseSaved(false)}
+                  >
+                    Use different login
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <label>
+                    Login account
+                    <input
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      autoComplete="username"
+                      required
+                      value={settings.user}
+                      onChange={(event) =>
+                        setSettings((previous) => ({
+                          ...previous,
+                          user: event.target.value,
+                        }))
+                      }
+                      placeholder="Your login server account"
+                    />
+                  </label>
+                  <label>
+                    Password
+                    <input
+                      type="password"
+                      autoComplete="current-password"
+                      required
+                      value={settings.pass}
+                      onChange={(event) =>
+                        setSettings((previous) => ({
+                          ...previous,
+                          pass: event.target.value,
+                        }))
+                      }
+                      placeholder={
+                        active
+                          ? "In use for this session"
+                          : "Your login password"
+                      }
+                    />
+                  </label>
+                  {vault.available && (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={!settings.user.trim() || !settings.pass}
+                      onClick={() => void changeSavedLogin("save")}
+                    >
+                      {vaultBusy
+                        ? "Saving…"
+                        : vault.saved
+                          ? "Replace saved login securely"
+                          : "Save login securely"}
+                    </button>
+                  )}
+                  {!vault.available && (
+                    <p className="storage-hint">
+                      To save a login, enable a device lock on Android 11+ or
+                      iOS, or enroll a strong biometric on older Android
+                      versions. You can also connect without saving.
+                    </p>
+                  )}
+                  {vault.saved && (
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={() => {
+                        setUseSaved(true);
+                        setSettings((previous) => ({
+                          ...previous,
+                          user: "",
+                          pass: "",
+                        }));
+                      }}
+                    >
+                      Use saved login
+                    </button>
+                  )}
+                </>
+              )}
+              {vault.saved && (
+                <button
+                  type="button"
+                  className="text-button forget-login"
+                  onClick={() => void changeSavedLogin("forget")}
+                >
+                  Forget saved login
+                </button>
+              )}
               <label>
                 Character name
                 <input
@@ -315,18 +514,24 @@ export default function App() {
             ) : (
               <button
                 className="primary-button"
-                disabled={!native || stopping}
+                disabled={!native || stopping || vaultBusy || !ready}
                 type="submit"
               >
-                Connect to character <span>→</span>
+                {!ready
+                  ? "Loading settings…"
+                  : useSaved
+                    ? "Unlock and connect"
+                    : "Connect to character"}{" "}
+                <span>→</span>
               </button>
             )}
           </form>
           <div className="quiet-note">
             <span>◇</span>
             <p>
-              Credentials stay in memory for this session. This first version
-              does not save your password. We try to stay connected in the
+              Settings are saved on this device. Saving your login is optional
+              and uses your device’s secure storage. The active session can
+              reconnect without unlocking again. We try to stay connected in the
               background, but your phone may pause or stop the app.
             </p>
           </div>

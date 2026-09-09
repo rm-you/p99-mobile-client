@@ -28,7 +28,19 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 beforeEach(() => {
   native.enabled = true;
-  native.invoke.mockReset().mockResolvedValue(undefined);
+  native.invoke.mockReset().mockImplementation((command: string) => {
+    if (command === "load_settings")
+      return Promise.resolve({
+        version: 1,
+        server: "green",
+        character: "",
+        channel: "all",
+        follow: true,
+      });
+    if (command === "credential_status")
+      return Promise.resolve({ available: true, saved: false });
+    return Promise.resolve();
+  });
   native.channels.length = 0;
 });
 afterEach(() => {
@@ -38,6 +50,7 @@ afterEach(() => {
 
 async function connect() {
   render(<App />);
+  await screen.findByRole("button", { name: /Connect to character/ });
   fireEvent.change(screen.getByLabelText("Login account"), {
     target: { value: "EXAMPLE_ACCOUNT" },
   });
@@ -157,7 +170,12 @@ describe("connection and chat", () => {
     fireEvent(document, new Event("visibilitychange"));
     fireEvent(window, new Event("focus"));
     expect(screen.getByText("Background message")).toBeTruthy();
-    expect(native.invoke).toHaveBeenCalledTimes(1);
+    expect(
+      native.invoke.mock.calls.filter(([name]) => name === "connect"),
+    ).toHaveLength(1);
+    expect(
+      native.invoke.mock.calls.some(([name]) => name === "disconnect"),
+    ).toBe(false);
     expect(native.channels).toHaveLength(1);
   });
 
@@ -177,6 +195,109 @@ describe("connection and chat", () => {
       stopped();
     });
     expect(screen.getByText("Offline", { exact: true })).toBeTruthy();
+  });
+
+  it("restores preferences without unlocking or reading the saved secret into the webview", async () => {
+    native.invoke.mockImplementation((command: string) => {
+      if (command === "load_settings")
+        return Promise.resolve({
+          version: 1,
+          server: "blue",
+          character: "ExampleCharacter",
+          channel: "guild",
+          follow: false,
+        });
+      if (command === "credential_status")
+        return Promise.resolve({ available: true, saved: true });
+      return Promise.resolve();
+    });
+    render(<App />);
+    await screen.findByText("Saved login is locked");
+    expect(screen.queryByLabelText("Password")).toBeNull();
+    expect(
+      native.invoke.mock.calls.some(([name]) => name === "connect_saved"),
+    ).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: /Unlock and connect/ }));
+    await screen.findByRole("heading", { name: "Conversation" });
+    expect(native.invoke).toHaveBeenCalledWith(
+      "connect_saved",
+      expect.objectContaining({
+        server: "blue",
+        character: "ExampleCharacter",
+      }),
+    );
+    expect(
+      native.invoke.mock.calls.filter(
+        ([name]) => name === "connect_saved",
+      )[0][1],
+    ).not.toHaveProperty("request");
+    expect(
+      screen
+        .getByRole("button", { name: "guild" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+
+  it("saves credentials separately, clears both inputs, and allows forgetting", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: /Connect to character/ });
+    fireEvent.change(screen.getByLabelText("Login account"), {
+      target: { value: "EXAMPLE_ACCOUNT" },
+    });
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "EXAMPLE_PASSWORD" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save login securely" }),
+    );
+    await screen.findByText("Saved login is locked");
+    expect(native.invoke).toHaveBeenCalledWith("save_credentials", {
+      credentials: { user: "EXAMPLE_ACCOUNT", pass: "EXAMPLE_PASSWORD" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Forget saved login" }));
+    await screen.findByLabelText("Password");
+    expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe(
+      "",
+    );
+    expect(
+      (screen.getByLabelText("Login account") as HTMLInputElement).value,
+    ).toBe("");
+    expect(native.invoke).toHaveBeenCalledWith("forget_credentials");
+    await waitFor(() =>
+      expect(
+        native.invoke.mock.calls.some(([name]) => name === "save_settings"),
+      ).toBe(true),
+    );
+    for (const [name, args] of native.invoke.mock.calls) {
+      if (name === "save_settings") {
+        expect(JSON.stringify(args)).not.toContain("EXAMPLE_ACCOUNT");
+        expect(JSON.stringify(args)).not.toContain("EXAMPLE_PASSWORD");
+      }
+    }
+    expect(localStorage.length).toBe(0);
+  });
+
+  it("leaves a cancelled unlock offline and preserves the saved login for retry", async () => {
+    const fallback = native.invoke.getMockImplementation()!;
+    native.invoke.mockImplementation((command: string, ...args: unknown[]) => {
+      if (command === "credential_status")
+        return Promise.resolve({ available: true, saved: true });
+      if (command === "connect_saved")
+        return Promise.reject("Login was not unlocked.");
+      return fallback(command, ...args);
+    });
+    render(<App />);
+    await screen.findByText("Saved login is locked");
+    fireEvent.change(screen.getByLabelText("Character name"), {
+      target: { value: "ExampleCharacter" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Unlock and connect/ }));
+    await screen.findByRole("alert");
+    expect(screen.getByText("Offline", { exact: true })).toBeTruthy();
+    expect(screen.getByText("Saved login is locked")).toBeTruthy();
+    expect(native.invoke.mock.calls.some(([name]) => name === "connect")).toBe(
+      false,
+    );
   });
 
   it("keeps the browser preview disconnected", () => {
