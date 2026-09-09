@@ -19,3 +19,7 @@ src-tauri/secure-login/target/
 src-tauri/secure-login/.tauri/
 src-tauri/secure-login/android/build/
 src-tauri/secure-login/android/.gradle/
+src-tauri/session-service/target/
+src-tauri/session-service/.tauri/
+src-tauri/session-service/android/build/
+src-tauri/session-service/android/.gradle/

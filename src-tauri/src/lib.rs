@@ -1,9 +1,12 @@
+mod background;
+mod delivery;
 mod items;
 mod profiles;
 mod session;
 mod settings;
 use tauri_plugin_opener::OpenerExt;
 
+use background::{BackgroundControl, BackgroundSession};
 use profiles::{validate_id, validate_unlocked, ProfileOperations, SaveProfile};
 use session::{AppEvent, ConnectRequest, SessionController};
 use settings::{Settings, SettingsStore};
@@ -18,18 +21,33 @@ use tauri_plugin_secure_login::{
 async fn connect(
     request: ConnectRequest,
     on_event: Channel<AppEvent>,
-    state: State<'_, Arc<SessionController>>,
+    app: tauri::AppHandle,
 ) -> Result<(), String> {
-    let controller = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        controller.start(request, move |event| {
-            on_event
-                .send(event)
-                .map_err(|_| "The chat view is no longer available".into())
-        })
-    })
-    .await
-    .map_err(|_| "Unable to start session task")?
+    tauri::async_runtime::spawn_blocking(move || start_session(&app, request, on_event))
+        .await
+        .map_err(|_| "Unable to start session task")?
+}
+
+/// Share worker lifetime and bounded event delivery between manual and saved logins.
+fn start_session(
+    app: &tauri::AppHandle,
+    request: ConnectRequest,
+    on_event: Channel<AppEvent>,
+) -> Result<(), String> {
+    let control = app.state::<Arc<BackgroundControl>>().inner().clone();
+    let delivery = control.clone();
+    let worker_app = app.clone();
+    app.state::<Arc<SessionController>>().start_with(
+        request,
+        move |event| {
+            delivery.delivery.publish(event);
+            Ok(())
+        },
+        move |token| {
+            control.delivery.attach(on_event);
+            BackgroundSession::begin(worker_app, control, token)
+        },
+    )
 }
 
 /// Unlock the selected character directly into the native worker.
@@ -55,18 +73,15 @@ async fn connect_saved(
             .ok_or("This saved character no longer exists.")?;
         let login = vault.unlock(&id)?;
         validate_unlocked(&login, &expected)?;
-        app.state::<Arc<SessionController>>().start(
+        start_session(
+            &app,
             ConnectRequest {
                 user: login.user,
                 pass: login.pass,
                 server: login.profile.server,
                 character: login.profile.character,
             },
-            move |event| {
-                on_event
-                    .send(event)
-                    .map_err(|_| "The chat view is no longer available".into())
-            },
+            on_event,
         )?;
         Ok(expected)
     })
@@ -202,12 +217,24 @@ async fn disconnect(state: State<'_, Arc<SessionController>>) -> Result<(), Stri
         .map_err(|_| "Unable to stop session task")?
 }
 
+/// Complement native Android visibility callbacks and replay on iOS/webview resume.
+#[tauri::command]
+fn set_chat_visible(visible: bool, control: State<'_, Arc<BackgroundControl>>) {
+    control.delivery.set_visible(visible);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let control = Arc::new(BackgroundControl::default());
+    let callbacks = control.clone();
     tauri::Builder::default()
+        .plugin(tauri_plugin_session_service::init(move |event| {
+            callbacks.handle(event)
+        }))
         .plugin(tauri_plugin_secure_login::init())
         .plugin(tauri_plugin_opener::init())
         .manage(Arc::new(SessionController::default()))
+        .manage(control)
         .manage(ProfileOperations::default())
         .setup(|app| {
             app.manage(SettingsStore::new(
@@ -219,6 +246,7 @@ pub fn run() {
             connect,
             connect_saved,
             disconnect,
+            set_chat_visible,
             credential_status,
             save_profile,
             forget_profile,

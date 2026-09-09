@@ -30,6 +30,10 @@ jobs:
         working-directory: src-tauri
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
       - name: Install Tauri desktop dependencies
         run: |
           sudo apt-get update
@@ -48,4 +52,11 @@ jobs:
           ndk_bin="$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
           export CC_aarch64_linux_android="$ndk_bin/aarch64-linux-android24-clang"
           export AR_aarch64_linux_android="$ndk_bin/llvm-ar"
-          cargo check --locked --target aarch64-linux-android --lib
+          cargo clippy --locked --workspace --target aarch64-linux-android --lib -- -D warnings
+      - name: Build Android APK including native plugins
+        working-directory: .
+        run: |
+          export NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          npm ci
+          npm run tauri -- android init --ci
+          npm run tauri -- android build --debug --target aarch64 --apk

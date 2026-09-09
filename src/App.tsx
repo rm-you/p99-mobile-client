@@ -72,6 +72,7 @@ export default function App() {
   const [active, setActive] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState("");
+  const [backgroundNotice, setBackgroundNotice] = useState("");
   const [retrying, setRetrying] = useState(false);
   const [now, setNow] = useState(Date.now);
   const [follow, setFollow] = useState(true);
@@ -80,6 +81,17 @@ export default function App() {
   const activeRef = useRef(false);
   const list = useRef<HTMLDivElement>(null);
   const native = isTauri();
+
+  useEffect(() => {
+    if (!native) return;
+    const visibility = () => {
+      void invoke("set_chat_visible", {
+        visible: document.visibilityState === "visible",
+      }).catch(() => {});
+    };
+    document.addEventListener("visibilitychange", visibility);
+    return () => document.removeEventListener("visibilitychange", visibility);
+  }, [native]);
 
   useEffect(() => {
     if (!active) return;
@@ -305,6 +317,7 @@ export default function App() {
       character: settings.character.trim(),
     };
     const id = ++generation.current;
+    setBackgroundNotice("");
     setError("");
     setRetrying(false);
     setNow(Date.now());
@@ -322,7 +335,20 @@ export default function App() {
     const onEvent = new Channel<AppEvent>();
     onEvent.onmessage = (event) => {
       if (id !== generation.current) return;
+      if (event.type === "background") {
+        setBackgroundNotice(
+          !event.data.supported
+            ? ""
+            : !event.data.active
+              ? "Background support is unavailable. Keep the app open for this session."
+              : !event.data.notifications_enabled
+                ? "Notifications are disabled. Enable them in Android settings to see background connection controls."
+                : "",
+        );
+        return;
+      }
       if (event.type === "finished") {
+        setBackgroundNotice("");
         setPendingLogin(null);
         activeRef.current = false;
         setActive(false);
@@ -433,6 +459,11 @@ export default function App() {
       {error && (
         <div role="alert" className="notice error">
           {error}
+        </div>
+      )}
+      {active && backgroundNotice && (
+        <div className="notice" role="status">
+          {backgroundNotice}
         </div>
       )}
       {!native && (

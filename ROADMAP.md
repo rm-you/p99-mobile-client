@@ -48,7 +48,18 @@ stayed connected and disconnected cleanly. A brief switch to the background left
 an OS `Operation not permitted` networking error, followed by the normal retry
 path. Disconnect then completed cleanly.
 
-Investigate an Android foreground service with a persistent connection
-notification and explicit stop action. Preserve best-effort background execution
-on iOS within its platform limits. Verify reconnects, screen locking, and process
-termination on real devices. Do not deliberately disconnect on focus changes.
+Implemented: an Android foreground service with an ongoing connection notification,
+native Stop action, session-scoped wake lock, and bounded native chat buffering
+while the webview is hidden. Permission denial does not prevent login; the app
+explains when notification controls or foreground support are unavailable.
+The plugin is Android-only and preserves iOS best-effort behavior without adding
+unsupported background modes. See the [implementation notes](src-tauri/session-service/README.md).
+
+An Android emulator test kept the same P99 session connected for two minutes
+with the screen locked, receiving 771 packets and two additional communication records.
+The notification's Stop action worked while the app was hidden, released the
+service and wake lock, and delivered the final state when the UI resumed.
+
+Remaining: physical-device battery/Doze testing, reconnect and process-termination
+validation, Google Play foreground-service declaration review if distributed there,
+and iOS/Xcode validation. iOS has no equivalent always-on socket service.

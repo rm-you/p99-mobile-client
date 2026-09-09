@@ -74,17 +74,28 @@ implemented.
 
 Background connections are best effort. Switching apps, locking the screen, or
 losing window focus does not deliberately disconnect the session or cancel a
-connection attempt. The existing network worker and retry loop keep running
-while the OS permits execution. Use **Disconnect** to end a session; explicit
-app exit also requests shutdown.
+connection attempt. Android starts a foreground service with an ongoing connection
+notification when you log in. Its **Stop** action disconnects directly through
+Rust, even with the chat screen hidden. The service and wake lock end after the
+network worker closes. Android 13+ asks for notification permission; denying it
+still allows the service, but hides the notification and its Stop action. Use
+the app's **Disconnect** button or the notification's **Stop** for a clean logout;
+explicit app exit or removing it from Recents also requests shutdown.
+Android's Active apps Stop control terminates the process without a clean logout.
+
+Rust buffers up to 1,500 chat records while the webview is hidden, then delivers
+them when you return. Android battery restrictions can still interrupt networking.
+iOS keeps the existing best-effort behavior; it has no equivalent service for an
+indefinitely running chat connection. See the
+[platform details and testing notes](src-tauri/session-service/README.md).
 
 The OS may suspend networking or terminate the app. If the process survives,
 the same worker can resume and retry a lost connection when allowed to run.
 After process termination, reopen the app and unlock the saved login or enter
 your credentials again.
-This version does not register an Android foreground service or request extra
-iOS background execution time. Background duration and lifecycle behavior still
-need testing on both platforms; continuous logging is not guaranteed. See the
+This version does not request extra iOS background execution time.
+Physical-device background duration and lifecycle behavior still need testing on
+both platforms; continuous logging is not guaranteed. See the
 [Android process lifecycle](https://developer.android.com/guide/components/activities/process-lifecycle)
 and [iOS background execution documentation](https://developer.apple.com/documentation/uikit/extending-your-app-s-background-execution-time).
 
@@ -139,6 +150,10 @@ credential files.
 - `src-tauri/src/session.rs`: one cancellable network worker, configuration
   validation, and serial session shutdown.
 - `src-tauri/src/lib.rs`: native commands and application lifecycle callbacks.
+- `src-tauri/src/background.rs` and `delivery.rs`: session lifetime and bounded
+  event delivery while the webview is hidden.
+- `src-tauri/session-service/`: Android foreground service, private connection
+  notification, and native Stop control; no-op platform support on iOS/desktop.
 - `src-tauri/src/settings.rs`: validated, atomic writes of nonsecret preferences.
 - `src-tauri/src/items.rs`: offline item lookup and safe Wiki browser URLs.
 - `src-tauri/src/items/`: indexed SQLite lookup and formatting of classic item stats.
@@ -175,6 +190,8 @@ the unit tests do not launch a webview. Tests contain synthetic examples only.
 The previous single-channel preference is migrated automatically when loaded.
 The frontend and Rust checks do not establish successful mobile packaging or
 an actual phone-to-P99 connection; those require device testing.
+CI additionally builds an Android APK so Kotlin service and manifest changes are
+compiled as well as Rust. A successful APK build still requires device validation.
 
 Secure storage implementation references:
 [Android authentication-bound keys](https://developer.android.com/identity/sign-in/biometric-auth#auth-per-use-keys)
