@@ -12,6 +12,7 @@ import type {
 import "./App.css";
 import ItemModal from "./ItemModal";
 import MessageRow from "./MessageRow";
+import { connectionDisplay } from "./connection";
 
 const initialSettings: ConnectRequest = {
   user: "",
@@ -53,13 +54,25 @@ export default function App() {
   const [active, setActive] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState("");
-  const [diagnostic, setDiagnostic] = useState("");
+  const [retrying, setRetrying] = useState(false);
+  const [now, setNow] = useState(Date.now);
   const [follow, setFollow] = useState(true);
   const [query, setQuery] = useState("");
   const generation = useRef(0);
   const activeRef = useRef(false);
   const list = useRef<HTMLDivElement>(null);
   const native = isTauri();
+
+  useEffect(() => {
+    if (!active) return;
+    const refresh = () => setNow(Date.now());
+    const timer = setInterval(refresh, 5000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [active]);
 
   useEffect(() => {
     if (!native) {
@@ -203,7 +216,8 @@ export default function App() {
       return;
     const id = ++generation.current;
     setError("");
-    setDiagnostic("");
+    setRetrying(false);
+    setNow(Date.now());
     setStatus(null);
     setRecords([]);
     activeRef.current = true;
@@ -217,13 +231,16 @@ export default function App() {
         setStatus((previous) =>
           previous ? { ...previous, state: "stopped" } : null,
         );
-        if (event.data.error) setError(event.data.error);
+        if (event.data.error)
+          setError("Connection ended. Please try connecting again.");
         return;
       }
       const message = event.data;
       switch (message.type) {
         case "status":
           setStatus(message.data);
+          setNow(Date.now());
+          setRetrying(false);
           break;
         case "record":
           setRecords((previous) => [
@@ -232,12 +249,10 @@ export default function App() {
           ]);
           break;
         case "diagnostic":
-          setDiagnostic(message.data);
+          // Transport details are not user-facing connection progress.
           break;
         case "reconnecting":
-          setDiagnostic(
-            `Connection ended: ${message.data.error}. Retrying in ${message.data.delay_seconds}s.`,
-          );
+          setRetrying(true);
           break;
       }
     };
@@ -270,15 +285,7 @@ export default function App() {
     }
   }
 
-  const stateLabel = stopping
-    ? "Disconnecting"
-    : active
-      ? status?.state === "connected"
-        ? "Connected"
-        : status?.state === "zoning"
-          ? "Entering zone"
-          : "Connecting"
-      : "Offline";
+  const connection = connectionDisplay(active, stopping, status, retrying, now);
   return (
     <main className="app-shell">
       <header className="app-header">
@@ -293,9 +300,9 @@ export default function App() {
           )}
         </div>
         <span
-          className={`connection-status ${status?.state === "connected" && active ? "online" : ""}`}
+          className={`connection-status ${connection.healthy ? "online" : ""}`}
         >
-          {stateLabel}
+          {connection.label}
         </span>
       </header>
       {error && (
@@ -563,21 +570,25 @@ export default function App() {
               Latest messages
             </button>
           )}
-          {(active || diagnostic) && (
-            <div className="chat-footer">
-              <span title={diagnostic}>{diagnostic}</span>
-              {active && (
-                <button
-                  className="text-button"
-                  disabled={stopping}
-                  onClick={() => void disconnect()}
-                >
-                  Disconnect
-                </button>
-              )}
-            </div>
-          )}
         </section>
+      )}
+      {(active || status) && (
+        <div
+          className={`chat-footer ${connection.busy ? "connection-progress" : ""}`}
+        >
+          <span role="status" aria-label="Connection health">
+            {connection.detail}
+          </span>
+          {active && tab === "chat" && (
+            <button
+              className="text-button"
+              disabled={stopping}
+              onClick={() => void disconnect()}
+            >
+              Disconnect
+            </button>
+          )}
+        </div>
       )}
       {selectedItem && (
         <ItemModal item={selectedItem} onClose={() => setSelectedItem(null)} />

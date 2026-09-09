@@ -9,7 +9,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import type { AppEvent } from "./protocol";
+import type { AppEvent, ClientEvent, SessionStatus } from "./protocol";
 
 const native = vi.hoisted(() => ({
   enabled: true,
@@ -77,7 +77,87 @@ async function connect() {
   await screen.findByRole("heading", { name: "Chat" });
 }
 
+function send(event: ClientEvent) {
+  act(() => native.channels[0].onmessage({ type: "client", data: event }));
+}
+
+function sessionStatus(state: SessionStatus["state"]): SessionStatus {
+  return {
+    state,
+    zone: "ecommons",
+    messages: 67890,
+    packets: 12345,
+    last_received_seconds: 0,
+    session_id: "synthetic-status",
+    timestamp: Math.floor(Date.now() / 1000),
+  };
+}
+
 describe("connection and chat", () => {
+  it("shows connection stages and health without packet diagnostics or counts", async () => {
+    await connect();
+    const health = () =>
+      screen.getByRole("status", { name: "Connection health" });
+    expect(health().textContent).toBe("Signing in to P99…");
+    send({ type: "diagnostic", data: "World opcode 0x1234: deadbeef" });
+    expect(health().textContent).toBe("Signing in to P99…");
+    send({ type: "status", data: sessionStatus("zoning") });
+    expect(health().textContent).toBe("Entering the game world…");
+    send({ type: "status", data: sessionStatus("connected") });
+    expect(health().textContent).toBe("Connection healthy");
+    send({
+      type: "diagnostic",
+      data: "Zone session: 12345 application packets, 67890 communication records",
+    });
+    expect(health().textContent).toBe("Connection healthy");
+    expect(document.querySelector(".connection-status.online")).not.toBeNull();
+    send({
+      type: "reconnecting",
+      data: { error: "Unexpected opcode 0x1234: deadbeef", delay_seconds: 15 },
+    });
+    expect(health().textContent).toBe("Connection interrupted · Retrying…");
+    expect(document.querySelector(".connection-status.online")).toBeNull();
+    send({ type: "status", data: sessionStatus("connecting") });
+    expect(health().textContent).toBe("Signing in to P99…");
+    fireEvent.click(screen.getByRole("button", { name: "Connection" }));
+    expect(health().textContent).toBe("Signing in to P99…");
+    act(() =>
+      native.channels[0].onmessage({
+        type: "finished",
+        data: { error: "Unexpected opcode 0x1234: deadbeef" },
+      }),
+    );
+    expect(health().textContent).toBe("Disconnected");
+    expect(screen.getByRole("alert").textContent).toBe(
+      "Connection ended. Please try connecting again.",
+    );
+    expect(document.body.innerHTML).not.toMatch(/0x1234|deadbeef|12345|67890/);
+  });
+
+  it("stops claiming a healthy connection when status updates stall", async () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1800000000000);
+    await connect();
+    send({ type: "status", data: sessionStatus("connected") });
+    clock.mockReturnValue(1800000061000);
+    fireEvent(document, new Event("visibilitychange"));
+    expect(
+      screen.getByRole("status", { name: "Connection health" }).textContent,
+    ).toBe("Waiting for server…");
+    expect(document.querySelector(".connection-status.online")).toBeNull();
+    // The core also uses zoning for a previously admitted but silent session.
+    send({
+      type: "status",
+      data: { ...sessionStatus("zoning"), last_received_seconds: 61 },
+    });
+    expect(
+      screen.getByRole("status", { name: "Connection health" }).textContent,
+    ).toBe("Waiting for server…");
+    send({ type: "status", data: sessionStatus("connected") });
+    expect(
+      screen.getByRole("status", { name: "Connection health" }).textContent,
+    ).toBe("Connection healthy");
+  });
+
   it("sends credentials only through native IPC and clears the password input", async () => {
     await connect();
     expect(screen.getByText("Connecting")).toBeTruthy();
