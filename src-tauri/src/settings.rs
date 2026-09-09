@@ -99,9 +99,11 @@ mod tests {
         let path = dir.path().join("settings.json");
         let store = SettingsStore::new(path.clone());
         assert_eq!(store.load().unwrap().channel, "all");
-        let mut settings = Settings::default();
-        settings.character = "ExampleCharacter".into();
-        settings.channel = "guild".into();
+        let mut settings = Settings {
+            character: "ExampleCharacter".into(),
+            channel: "guild".into(),
+            ..Settings::default()
+        };
         store.save(settings.clone()).unwrap();
         settings.channel = "ooc".into();
         store.save(settings).unwrap();
@@ -119,8 +121,10 @@ mod tests {
         }
         let dir = tempfile::tempdir().unwrap();
         let store = SettingsStore::new(dir.path().join("settings.json"));
-        let mut settings = Settings::default();
-        settings.version = 2;
+        let settings = Settings {
+            version: 2,
+            ..Settings::default()
+        };
         assert!(store.save(settings).is_err());
         assert!(!store.path.exists());
     }
