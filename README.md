@@ -37,6 +37,8 @@ need testing on both platforms; continuous logging is not guaranteed. See the
 [Android process lifecycle](https://developer.android.com/guide/components/activities/process-lifecycle)
 and [iOS background execution documentation](https://developer.apple.com/documentation/uikit/extending-your-app-s-background-execution-time).
 
+See the [follow-up priorities](ROADMAP.md) for secure settings storage and chat UI improvements.
+
 ## Development
 
 Install Node.js 24, Rust stable, and the
@@ -52,7 +54,9 @@ The browser preview renders the UI with connection disabled. Use
 
 ### Android
 
-With the Android SDK, NDK, and Java configured:
+With the Android SDK, NDK, and Java configured, enable Windows Developer Mode
+if building on Windows so Tauri can create its native library symbolic links.
+Then run:
 
 ```sh
 npm run tauri android init
