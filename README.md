@@ -12,8 +12,11 @@ password, and provide the name of an existing character. The character joins
 the zone where you last left them. Log out of the graphical game client first.
 
 The chat view receives all communication channels and lets you filter by
-channel or search the most recent 1,500 messages. A single selector filters channels,
-with subtle colors on each message's channel label.
+channel or search the most recent 1,500 messages. Expand **Filters** to check any
+combination of channels and search their messages, then collapse it to make room
+for chat. All channels are selected initially; **All** and **None** make changing
+selections quicker. Filters keep applying while collapsed. Chat uses Titanium's
+original channel colors, and the header displays full zone names.
 Tap an item link to open its stats from the P99 Wiki, or open its source page in
 your browser. Lookups use the item name, with loading, retry, and unavailable-page
 states; account credentials and chat messages are never sent to the Wiki.
@@ -22,7 +25,7 @@ plain text from the Wiki item card and never renders remote HTML. Item link IDs
 and original link bodies remain available in the received records. Clearing the
 view removes its retained messages.
 
-Server, character, channel filter, and follow-latest preferences are saved on
+Server, character, selected channels, filter-panel visibility, and follow-latest preferences are saved on
 this device. Account credentials are saved only when you choose **Save login
 securely**. Otherwise they stay in memory for the current session. A saved
 login appears locked after restarting the app; **Unlock and connect** asks for
@@ -145,6 +148,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 Rust desktop checks require the platform's Tauri system libraries even though
 the unit tests do not launch a webview. Tests contain synthetic examples only.
+The previous single-channel preference is migrated automatically when loaded.
 The frontend and Rust checks do not establish successful mobile packaging or
 an actual phone-to-P99 connection; those require device testing.
 

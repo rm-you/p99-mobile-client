@@ -1,18 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
-import { CHANNELS, MAX_RECORDS, matchesChannel, recordText } from "./protocol";
+import { CHANNELS, MAX_RECORDS, matchesChannels, recordText } from "./protocol";
 import type {
   AppEvent,
   ChatRecord,
   ConnectRequest,
   SessionStatus,
   ItemLink,
+  ChatChannel,
 } from "./protocol";
 import "./App.css";
 import ItemModal from "./ItemModal";
 import MessageRow from "./MessageRow";
 import { connectionDisplay } from "./connection";
+import { zoneName } from "./zones";
 
 const initialSettings: ConnectRequest = {
   user: "",
@@ -24,7 +26,8 @@ interface SavedSettings {
   version: number;
   server: ConnectRequest["server"];
   character: string;
-  channel: string;
+  channels: ChatChannel[];
+  filters_open: boolean;
   follow: boolean;
 }
 interface VaultStatus {
@@ -49,7 +52,8 @@ export default function App() {
   const [tab, setTab] = useState<"chat" | "settings">("settings");
   const [selectedItem, setSelectedItem] = useState<ItemLink | null>(null);
   const [records, setRecords] = useState<ChatRecord[]>([]);
-  const [channel, setChannel] = useState("all");
+  const [channels, setChannels] = useState<ChatChannel[]>([...CHANNELS]);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [status, setStatus] = useState<SessionStatus | null>(null);
   const [active, setActive] = useState(false);
   const [stopping, setStopping] = useState(false);
@@ -92,7 +96,8 @@ export default function App() {
           server: value.server,
           character: value.character,
         }));
-        setChannel(value.channel);
+        setChannels(value.channels);
+        setFiltersOpen(value.filters_open);
         setFollow(value.follow);
         setPersist(true);
       } else
@@ -119,10 +124,11 @@ export default function App() {
     if (!native || !ready || !persist) return;
     const timer = setTimeout(() => {
       const preferences: SavedSettings = {
-        version: 1,
+        version: 2,
         server: settings.server,
         character: settings.character,
-        channel,
+        channels,
+        filters_open: filtersOpen,
         follow,
       };
       saveQueue.current = saveQueue.current
@@ -140,7 +146,8 @@ export default function App() {
     persist,
     settings.server,
     settings.character,
-    channel,
+    channels,
+    filtersOpen,
     follow,
   ]);
 
@@ -176,7 +183,7 @@ export default function App() {
 
   const visible = records.filter(
     (record) =>
-      matchesChannel(record, channel) &&
+      matchesChannels(record, channels) &&
       `${record.sender ?? ""} ${recordText(record)}`
         .toLocaleLowerCase()
         .includes(query.toLocaleLowerCase()),
@@ -202,7 +209,7 @@ export default function App() {
   useEffect(() => {
     if (follow && list.current)
       list.current.scrollTop = list.current.scrollHeight;
-  }, [records, channel, query, follow, tab]);
+  }, [records, channels, query, follow, tab, filtersOpen]);
 
   async function connect(event: FormEvent) {
     event.preventDefault();
@@ -295,7 +302,7 @@ export default function App() {
             <p className="session-context">
               {settings.character} · P99{" "}
               {settings.server === "green" ? "Green" : "Blue"}
-              {status?.zone ? ` · ${status.zone}` : ""}
+              {status?.zone ? ` · ${zoneName(status.zone)}` : ""}
             </p>
           )}
         </div>
@@ -496,18 +503,59 @@ export default function App() {
               Clear
             </button>
           </div>
-          <div className="chat-filters">
-            <select
-              aria-label="Chat channel"
-              value={channel}
-              onChange={(event) => setChannel(event.target.value)}
-            >
-              {CHANNELS.map((name) => (
-                <option key={name} value={name}>
-                  {name === "all" ? "All channels" : channelLabel(name)}
-                </option>
-              ))}
-            </select>
+          <details
+            className="chat-filters"
+            open={filtersOpen}
+            onToggle={(event) => setFiltersOpen(event.currentTarget.open)}
+          >
+            <summary>
+              Filters
+              {channels.length !== CHANNELS.length || query ? " · Active" : ""}
+            </summary>
+            <fieldset className="channel-filters">
+              <legend className="sr-only">Chat channels</legend>
+              <div className="channel-actions">
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => setChannels([...CHANNELS])}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => setChannels([])}
+                >
+                  None
+                </button>
+              </div>
+              <div className="channel-options">
+                {CHANNELS.map((name) => (
+                  <label
+                    key={name}
+                    className={`channel-toggle channel-${name}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={channels.includes(name)}
+                      onChange={(event) =>
+                        setChannels((previous) =>
+                          event.target.checked
+                            ? CHANNELS.filter(
+                                (channel) =>
+                                  channel === name ||
+                                  previous.includes(channel),
+                              )
+                            : previous.filter((channel) => channel !== name),
+                        )
+                      }
+                    />
+                    {channelLabel(name)}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
             <input
               type="search"
               aria-label="Search retained messages"
@@ -515,7 +563,7 @@ export default function App() {
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search messages"
             />
-          </div>
+          </details>
           <div
             className="messages"
             ref={list}
@@ -541,18 +589,22 @@ export default function App() {
             ) : (
               <div className="empty-state">
                 <h3>
-                  {records.length
-                    ? "No matching messages"
-                    : active
-                      ? "Waiting for messages"
-                      : "No messages yet"}
+                  {!channels.length
+                    ? "No channels selected"
+                    : records.length
+                      ? "No matching messages"
+                      : active
+                        ? "Waiting for messages"
+                        : "No messages yet"}
                 </h3>
                 <p>
-                  {records.length
-                    ? "Try another channel or search."
-                    : active
-                      ? "Incoming messages will appear here."
-                      : "Connect your character to see live game chat."}
+                  {!channels.length
+                    ? "Open Filters to choose which channels to show."
+                    : records.length
+                      ? "Try another channel or search."
+                      : active
+                        ? "Incoming messages will appear here."
+                        : "Connect your character to see live game chat."}
                 </p>
                 {!active && (
                   <button

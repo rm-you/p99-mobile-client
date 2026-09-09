@@ -147,8 +147,7 @@ legend {
   margin-top: 18px;
 }
 .settings-view input,
-.chat-filters input,
-.chat-filters select {
+.chat-filters input[type="search"] {
   width: 100%;
   min-width: 0;
   min-height: 44px;
@@ -266,16 +265,54 @@ input::placeholder {
   font-size: 12px;
 }
 .chat-filters {
-  display: flex;
-  gap: 8px;
-  padding: 0 16px 12px;
+  padding: 0 16px;
   border-bottom: 1px solid var(--line);
 }
-.chat-filters select {
-  flex: 0 0 136px;
+.chat-filters summary {
+  cursor: pointer;
+  color: var(--muted);
+  padding: 12px 0;
+  font-size: 13px;
 }
-.chat-filters input {
-  flex: 1;
+.chat-filters input[type="search"] {
+  margin: 12px 0;
+}
+.channel-actions {
+  display: flex;
+  gap: 12px;
+}
+.channel-actions .text-button {
+  padding-left: 0;
+}
+.channel-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+.channel-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  color: var(--channel-color);
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+}
+.channel-toggle input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--channel-color);
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .messages {
   flex: 1;
@@ -303,25 +340,37 @@ input::placeholder {
 .channel-name {
   color: var(--channel-color, var(--muted));
 }
-.channel-auction {
-  --channel-color: #d5bb8d;
+/* Titanium TextColors defaults, matched against the installed client palette. */
+.channel-say,
+.channel-system,
+.channel-motd {
+  --channel-color: #ffffff;
+}
+.channel-auction,
+.channel-ooc {
+  --channel-color: #008000;
 }
 .channel-guild,
-.channel-guild_motd,
+.channel-guild_motd {
+  --channel-color: #28f028;
+}
 .channel-group {
-  --channel-color: #a1cfa9;
+  --channel-color: #00ffff;
 }
 .channel-tell {
-  --channel-color: #c6b1df;
+  --channel-color: #be28be;
 }
-.channel-ooc {
-  --channel-color: #a9c6ef;
+.channel-raid {
+  --channel-color: #00c8c8;
 }
 .channel-shout {
-  --channel-color: #dfb097;
+  --channel-color: #ff0000;
+}
+.channel-emote {
+  --channel-color: #5a5aff;
 }
 .message-meta strong {
-  color: #e5e7eb;
+  color: var(--channel-color, #ffffff);
   font-weight: 600;
 }
 .recipient {
@@ -333,6 +382,7 @@ input::placeholder {
   font-variant-numeric: tabular-nums;
 }
 .message-text {
+  color: var(--channel-color, #ffffff);
   font-size: 14px;
   line-height: 1.55;
   white-space: pre-wrap;
@@ -341,7 +391,7 @@ input::placeholder {
 .item-link {
   display: inline;
   padding: 0;
-  color: var(--accent);
+  color: #ff00ff;
   background: transparent;
   text-align: inherit;
   font: inherit;
@@ -350,7 +400,7 @@ input::placeholder {
 }
 .inline-item-link:hover,
 .item-link:hover {
-  color: #d6e6ff;
+  color: #ff80ff;
 }
 .item-links {
   display: flex;
@@ -501,13 +551,5 @@ input::placeholder {
   }
   .settings-view {
     padding: 24px;
-  }
-}
-@media (max-width: 360px) {
-  .chat-filters {
-    flex-wrap: wrap;
-  }
-  .chat-filters select {
-    flex: 1 0 100%;
   }
 }

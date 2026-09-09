@@ -55,7 +55,6 @@ export type AppEvent =
   | { type: "finished"; data: { error: string | null } };
 export const MAX_RECORDS = 1500;
 export const CHANNELS = [
-  "all",
   "auction",
   "ooc",
   "guild",
@@ -64,8 +63,10 @@ export const CHANNELS = [
   "say",
   "shout",
   "raid",
+  "emote",
   "system",
 ] as const;
+export type ChatChannel = (typeof CHANNELS)[number];
 export function recordText(record: ChatRecord): string {
   if (record.type === "decode_error")
     return record.error ?? "A message could not be decoded.";
@@ -82,14 +83,12 @@ export function recordText(record: ChatRecord): string {
       .join(": ") || "Game message"
   );
 }
-export function matchesChannel(record: ChatRecord, channel: string): boolean {
-  if (channel === "all") return true;
-  if (channel === "system")
-    return (
-      record.type === "decode_error" ||
-      ["system", "motd", "guild_motd", "broadcast"].includes(
-        record.channel_name ?? "",
-      )
-    );
-  return record.channel_name === channel;
+export function matchesChannels(
+  record: ChatRecord,
+  channels: ChatChannel[],
+): boolean {
+  const name = record.channel_name as ChatChannel;
+  const channel =
+    record.type !== "decode_error" && CHANNELS.includes(name) ? name : "system";
+  return channels.includes(channel);
 }

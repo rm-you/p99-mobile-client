@@ -2,6 +2,35 @@ use crate::session::Server;
 use serde::{Deserialize, Serialize};
 use std::{fs, io::Write, path::PathBuf, sync::Mutex};
 
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChatChannel {
+    Auction,
+    Ooc,
+    Guild,
+    Tell,
+    Group,
+    Say,
+    Shout,
+    Raid,
+    Emote,
+    System,
+}
+impl ChatChannel {
+    const ALL: [Self; 10] = [
+        Self::Auction,
+        Self::Ooc,
+        Self::Guild,
+        Self::Tell,
+        Self::Group,
+        Self::Say,
+        Self::Shout,
+        Self::Raid,
+        Self::Emote,
+        Self::System,
+    ];
+}
+
 /// Only nonsecret preferences may be persisted in this file.
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -9,33 +38,83 @@ pub struct Settings {
     pub version: u8,
     pub server: Server,
     pub character: String,
-    pub channel: String,
+    pub channels: Vec<ChatChannel>,
+    pub filters_open: bool,
     pub follow: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            version: 1,
+            version: 2,
             server: Server::Green,
             character: String::new(),
-            channel: "all".into(),
+            channels: ChatChannel::ALL.to_vec(),
+            filters_open: false,
             follow: true,
         }
     }
 }
 impl Settings {
     fn validate(&self) -> Result<(), String> {
-        if self.version != 1
+        if self.version != 2
             || self.character.len() >= 64
             || self.character.contains('\0')
-            || ![
-                "all", "auction", "ooc", "guild", "tell", "group", "say", "shout", "raid", "system",
-            ]
-            .contains(&self.channel.as_str())
+            || self
+                .channels
+                .iter()
+                .enumerate()
+                .any(|(index, channel)| self.channels[..index].contains(channel))
         {
             return Err("Saved settings are invalid or from an unsupported version.".into());
         }
         Ok(())
+    }
+}
+
+/// Read the old single-channel preference without losing other saved settings.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LegacySettings {
+    version: u8,
+    server: Server,
+    character: String,
+    channel: String,
+    follow: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum StoredSettings {
+    Current(Settings),
+    Legacy(LegacySettings),
+}
+impl StoredSettings {
+    fn current(self) -> Result<Settings, String> {
+        let settings = match self {
+            Self::Current(settings) => settings,
+            Self::Legacy(old) => {
+                if old.version != 1 {
+                    return Err("Saved settings are from an unsupported version.".into());
+                }
+                let channels = if old.channel == "all" {
+                    ChatChannel::ALL.to_vec()
+                } else {
+                    vec![
+                        serde_json::from_value(serde_json::Value::String(old.channel))
+                            .map_err(|_| "Saved channel preference is invalid.")?,
+                    ]
+                };
+                Settings {
+                    server: old.server,
+                    character: old.character,
+                    channels,
+                    follow: old.follow,
+                    ..Settings::default()
+                }
+            }
+        };
+        settings.validate()?;
+        Ok(settings)
     }
 }
 
@@ -61,10 +140,9 @@ impl SettingsStore {
             }
             Err(_) => return Err("Could not read saved settings.".into()),
         };
-        let settings: Settings =
+        let settings: StoredSettings =
             serde_json::from_slice(&bytes).map_err(|_| "Could not read saved settings.")?;
-        settings.validate()?;
-        Ok(settings)
+        settings.current()
     }
 
     /// Serialize writes and atomically replace the file, including on Windows.
@@ -98,17 +176,19 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
         let store = SettingsStore::new(path.clone());
-        assert_eq!(store.load().unwrap().channel, "all");
+        assert_eq!(store.load().unwrap().channels.len(), ChatChannel::ALL.len());
         let mut settings = Settings {
             character: "ExampleCharacter".into(),
-            channel: "guild".into(),
+            channels: vec![ChatChannel::Guild, ChatChannel::Tell],
+            filters_open: true,
             ..Settings::default()
         };
         store.save(settings.clone()).unwrap();
-        settings.channel = "ooc".into();
+        settings.channels = vec![ChatChannel::Auction, ChatChannel::Ooc];
         store.save(settings).unwrap();
         let reloaded = SettingsStore::new(path).load().unwrap();
-        assert_eq!(reloaded.channel, "ooc");
+        assert!(reloaded.channels == [ChatChannel::Auction, ChatChannel::Ooc]);
+        assert!(reloaded.filters_open);
         assert_eq!(reloaded.character, "ExampleCharacter");
     }
     #[test]
@@ -122,10 +202,61 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = SettingsStore::new(dir.path().join("settings.json"));
         let settings = Settings {
-            version: 2,
+            version: 3,
             ..Settings::default()
         };
         assert!(store.save(settings).is_err());
         assert!(!store.path.exists());
+    }
+
+    #[test]
+    fn legacy_filters_migrate_and_empty_selection_survives_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SettingsStore::new(dir.path().join("settings.json"));
+        for channel in ["guild", "all"] {
+            let old = serde_json::json!({"version": 1, "server": "blue", "character": "ExampleCharacter", "channel": channel, "follow": false});
+            fs::write(&store.path, serde_json::to_vec(&old).unwrap()).unwrap();
+            let settings = store.load().unwrap();
+            assert_eq!(settings.version, 2);
+            assert!(matches!(settings.server, Server::Blue));
+            assert_eq!(settings.character, "ExampleCharacter");
+            assert!(!settings.follow);
+            assert!(!settings.filters_open);
+            assert!(
+                settings.channels
+                    == if channel == "all" {
+                        ChatChannel::ALL.to_vec()
+                    } else {
+                        vec![ChatChannel::Guild]
+                    }
+            );
+        }
+        store
+            .save(Settings {
+                channels: vec![],
+                ..Settings::default()
+            })
+            .unwrap();
+        assert!(store.load().unwrap().channels.is_empty());
+    }
+
+    #[test]
+    fn corrupt_or_future_filters_are_not_replaced() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SettingsStore::new(dir.path().join("settings.json"));
+        let current = serde_json::to_value(Settings::default()).unwrap();
+        for (key, value) in [
+            ("version", serde_json::json!(3)),
+            ("channels", serde_json::json!(["unknown"])),
+            ("channels", serde_json::json!(["guild", "guild"])),
+            ("password", serde_json::json!("SYNTHETIC_SECRET")),
+        ] {
+            let mut invalid = current.clone();
+            invalid[key] = value;
+            let bytes = serde_json::to_vec(&invalid).unwrap();
+            fs::write(&store.path, &bytes).unwrap();
+            assert!(store.load().is_err());
+            assert_eq!(fs::read(&store.path).unwrap(), bytes);
+        }
     }
 }

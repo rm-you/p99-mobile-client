@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
+import { CHANNELS } from "./protocol";
 import type { AppEvent, ClientEvent, SessionStatus } from "./protocol";
 
 const native = vi.hoisted(() => ({
@@ -31,10 +32,11 @@ beforeEach(() => {
   native.invoke.mockReset().mockImplementation((command: string) => {
     if (command === "load_settings")
       return Promise.resolve({
-        version: 1,
+        version: 2,
         server: "green",
         character: "",
-        channel: "all",
+        channels: [...CHANNELS],
+        filters_open: false,
         follow: true,
       });
     if (command === "credential_status")
@@ -217,10 +219,22 @@ describe("connection and chat", () => {
     expect(screen.getByText("Selling <script>not HTML</script>")).toBeTruthy();
     expect(screen.getByText("Example item")).toBeTruthy();
     expect(document.querySelector(".messages script")).toBeNull();
-    fireEvent.change(screen.getByRole("combobox", { name: "Chat channel" }), {
-      target: { value: "guild" },
+    fireEvent.click(screen.getByText("Filters", { selector: "summary" }));
+    fireEvent.click(screen.getByRole("button", { name: "None" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "guild" }));
+    expect(screen.queryByText("Selling <script>not HTML</script>")).toBeNull();
+    expect(screen.getByText("Guild example")).toBeTruthy();
+    fireEvent.click(screen.getByRole("checkbox", { name: "auction" }));
+    expect(screen.getByText("Selling <script>not HTML</script>")).toBeTruthy();
+    expect(screen.getByText("Guild example")).toBeTruthy();
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "Guild" },
     });
     expect(screen.queryByText("Selling <script>not HTML</script>")).toBeNull();
+    expect(screen.getByText("Guild example")).toBeTruthy();
+    fireEvent.click(
+      screen.getByText("Filters · Active", { selector: "summary" }),
+    );
     expect(screen.getByText("Guild example")).toBeTruthy();
   });
 
@@ -261,6 +275,42 @@ describe("connection and chat", () => {
     expect(native.channels).toHaveLength(1);
   });
 
+  it("saves independent channel choices and collapsed filter visibility", async () => {
+    await connect();
+    fireEvent.click(screen.getByText("Filters", { selector: "summary" }));
+    fireEvent.click(screen.getByRole("button", { name: "None" }));
+    expect(screen.getByText("No channels selected")).toBeTruthy();
+    fireEvent.click(screen.getByRole("checkbox", { name: "guild" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "tell" }));
+    await waitFor(() =>
+      expect(native.invoke).toHaveBeenCalledWith("save_settings", {
+        settings: expect.objectContaining({
+          version: 2,
+          channels: ["guild", "tell"],
+          filters_open: true,
+        }),
+      }),
+    );
+    fireEvent.click(
+      screen.getByText("Filters · Active", { selector: "summary" }),
+    );
+    await waitFor(() =>
+      expect(native.invoke).toHaveBeenCalledWith("save_settings", {
+        settings: expect.objectContaining({
+          channels: ["guild", "tell"],
+          filters_open: false,
+        }),
+      }),
+    );
+    // jsdom's accessibility queries do not hide descendants of closed details.
+    expect(
+      (
+        screen.getByText("Filters · Active", { selector: "summary" })
+          .parentElement as HTMLDetailsElement
+      ).open,
+    ).toBe(false);
+  });
+
   it("requests native shutdown before allowing a new connection", async () => {
     await connect();
     let stopped!: () => void;
@@ -283,10 +333,11 @@ describe("connection and chat", () => {
     native.invoke.mockImplementation((command: string) => {
       if (command === "load_settings")
         return Promise.resolve({
-          version: 1,
+          version: 2,
           server: "blue",
           character: "ExampleCharacter",
-          channel: "guild",
+          channels: ["guild", "tell"],
+          filters_open: true,
           follow: false,
         });
       if (command === "credential_status")
@@ -314,12 +365,17 @@ describe("connection and chat", () => {
       )[0][1],
     ).not.toHaveProperty("request");
     expect(
-      (
-        screen.getByRole("combobox", {
-          name: "Chat channel",
-        }) as HTMLSelectElement
-      ).value,
-    ).toBe("guild");
+      (screen.getByRole("checkbox", { name: "guild" }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    expect(
+      (screen.getByRole("checkbox", { name: "tell" }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    expect(
+      (screen.getByRole("checkbox", { name: "auction" }) as HTMLInputElement)
+        .checked,
+    ).toBe(false);
   });
 
   it("saves credentials separately, clears both inputs, and allows forgetting", async () => {
@@ -395,5 +451,8 @@ describe("connection and chat", () => {
       ).disabled,
     ).toBe(true);
     expect(native.invoke).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Chat" }));
+    expect(screen.getByText("No messages yet")).toBeTruthy();
+    expect(screen.getByText("0 messages")).toBeTruthy();
   });
 });
