@@ -2540,6 +2540,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-opener",
  "tauri-plugin-secure-login",
+ "tauri-plugin-session-service",
  "tempfile",
  "url",
  "uuid",
@@ -3782,6 +3783,16 @@ name = "tauri-plugin-secure-login"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "tauri",
+ "tauri-plugin",
+]
+
+[[package]]
+name = "tauri-plugin-session-service"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
  "tauri",
  "tauri-plugin",
 ]

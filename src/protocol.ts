@@ -67,6 +67,15 @@ export type ClientEvent =
 export type AppEvent =
   | { type: "client"; data: ClientEvent }
   | {
+      type: "background";
+      data: {
+        supported: boolean;
+        active: boolean;
+        notifications_enabled: boolean;
+        battery_optimized: boolean;
+      };
+    }
+  | {
       type: "finished";
       data: { error: "invalid_credentials" | "connection_lost" | null };
     };

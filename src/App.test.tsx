@@ -123,6 +123,56 @@ function send(event: ClientEvent) {
   act(() => native.channels[0].onmessage({ type: "client", data: event }));
 }
 
+it("reports limited background support without ending the session", async () => {
+  await connect();
+  act(() =>
+    native.channels[0].onmessage({
+      type: "background",
+      data: {
+        supported: true,
+        active: false,
+        notifications_enabled: false,
+        battery_optimized: true,
+      },
+    }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Connection" }));
+  expect(screen.getByText(/Background support is unavailable/)).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Disconnect" })).toBeTruthy();
+  act(() =>
+    native.channels[0].onmessage({
+      type: "background",
+      data: {
+        supported: true,
+        active: true,
+        notifications_enabled: false,
+        battery_optimized: true,
+      },
+    }),
+  );
+  expect(screen.getByText(/Notifications are disabled/)).toBeTruthy();
+  act(() =>
+    native.channels[0].onmessage({ type: "finished", data: { error: null } }),
+  );
+  expect(screen.queryByText(/Notifications are disabled/)).toBeNull();
+});
+
+it("tells native code when the chat view is hidden or resumed", async () => {
+  render(<App />);
+  await screen.findByRole("button", { name: "Login" });
+  const visibility = vi.spyOn(document, "visibilityState", "get");
+  visibility.mockReturnValue("hidden");
+  fireEvent(document, new Event("visibilitychange"));
+  expect(native.invoke).toHaveBeenCalledWith("set_chat_visible", {
+    visible: false,
+  });
+  visibility.mockReturnValue("visible");
+  fireEvent(document, new Event("visibilitychange"));
+  expect(native.invoke).toHaveBeenCalledWith("set_chat_visible", {
+    visible: true,
+  });
+});
+
 function sessionStatus(state: SessionStatus["state"]): SessionStatus {
   return {
     state,

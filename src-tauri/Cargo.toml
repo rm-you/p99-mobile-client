@@ -1,5 +1,5 @@
 [workspace]
-members = ["secure-login"]
+members = ["secure-login", "session-service"]
 resolver = "2"
 
 [package]
@@ -31,6 +31,7 @@ url = "2"
 uuid = { version = "1", features = ["v4"] }
 tauri-plugin-opener = "2"
 tauri-plugin-secure-login = { path = "secure-login" }
+tauri-plugin-session-service = { path = "session-service" }
 p99-logger-client = { git = "https://github.com/rm-you/p99-logger-client", branch = "main", default-features = false }
 
 

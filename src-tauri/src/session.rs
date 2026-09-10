@@ -26,10 +26,11 @@ pub struct ConnectRequest {
     pub server: Server,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum AppEvent {
     Client(ClientEvent),
+    Background(tauri_plugin_session_service::BackgroundStatus),
     Finished { error: Option<SessionFailure> },
 }
 
@@ -55,6 +56,15 @@ struct Worker {
     thread: JoinHandle<()>,
 }
 
+/// Platform support lives exactly as long as the worker, including error unwinding.
+pub trait SessionObserver: Send {
+    fn observe(&mut self, event: &ClientEvent);
+}
+
+impl SessionObserver for () {
+    fn observe(&mut self, _event: &ClientEvent) {}
+}
+
 /// Owns one network worker and stops it before another session can start.
 #[derive(Default)]
 pub struct SessionController {
@@ -64,10 +74,21 @@ pub struct SessionController {
 
 impl SessionController {
     /// Start a single session; the event sink runs on the network worker.
+    #[cfg(test)]
     pub fn start(
         &self,
         request: ConnectRequest,
+        send: impl FnMut(AppEvent) -> Result<(), String> + Send + 'static,
+    ) -> Result<(), String> {
+        self.start_with(request, send, |_| ())
+    }
+
+    /// Validate and serialize before acquiring platform support, then release it on every exit.
+    pub fn start_with<O: SessionObserver + 'static>(
+        &self,
+        request: ConnectRequest,
         mut send: impl FnMut(AppEvent) -> Result<(), String> + Send + 'static,
+        begin: impl FnOnce(CancellationToken) -> O,
     ) -> Result<(), String> {
         let config = ClientConfig::new(
             request.user,
@@ -102,12 +123,16 @@ impl SessionController {
             .lock()
             .map_err(|_| "Session state unavailable")? = Some(cancel.clone());
         let worker_cancel = cancel.clone();
+        let mut observer = begin(cancel.clone());
         let worker = thread::Builder::new()
             .name("p99-session".into())
             .spawn(move || {
                 let outcome = client.run(&worker_cancel, RunOptions::default(), |event| {
+                    observer.observe(&event);
                     send(AppEvent::Client(event)).map_err(anyhow::Error::msg)
                 });
+                // The network has closed before the foreground service and wake lock end.
+                drop(observer);
                 let _ = send(AppEvent::Finished {
                     error: outcome.err().as_ref().map(SessionFailure::from_error),
                 });
@@ -132,6 +157,7 @@ impl SessionController {
     /// Close and join the current worker before permitting another connection.
     /// Call from a blocking task, since platform DNS resolution can delay exit.
     pub fn stop(&self) -> Result<(), String> {
+        self.cancel();
         let mut slot = self
             .worker
             .lock()
