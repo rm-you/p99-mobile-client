@@ -10,6 +10,9 @@ The workflow builds the full release app, including both Swift plugins, with
 bundled web assets. It launches a disposable iPhone simulator, checks settings
 persistence and resume through XCTest, and captures screenshots/results. It then
 builds a device IPA and checks its identity, Face ID metadata, and privacy manifest.
+Device packaging still runs after a UI-test failure to collect both results;
+the overall workflow and TestFlight gate require all checks to pass. Restart tests
+allow the shared UI's debounced autosave to finish before terminating the process.
 
 On `codex/ios-parity`, only a commit message containing `[ios-ci]` opts into the
 Mac job. Ordinary development commits skip it. Main and pull-request checks run

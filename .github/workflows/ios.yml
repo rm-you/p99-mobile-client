@@ -46,6 +46,7 @@ jobs:
           npm test
           python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Build complete Simulator application
+        id: build-simulator
         run: |
           npm run tauri -- ios init --ci
           python3 scripts/prepare_ios.py --simulator
@@ -63,6 +64,8 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
       - name: Build unsigned device candidate
+        id: build-device
+        if: ${{ !cancelled() && steps.build-simulator.outcome == 'success' }}
         run: |
           python3 scripts/resolve_ios.py
           npm run tauri -- ios build --ci --target aarch64 --no-sign
@@ -71,6 +74,7 @@ jobs:
           test "${#ipa[@]}" -eq 1
           python3 scripts/verify_ios.py "${ipa[0]}"
       - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() && steps.build-device.outcome == 'success' }}
         with:
           name: ios-unsigned-device-${{ github.sha }}
           path: src-tauri/gen/apple/build/arm64/*.ipa

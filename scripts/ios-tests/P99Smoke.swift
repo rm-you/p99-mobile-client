@@ -3,6 +3,7 @@ import XCTest
 /// Exercise the installed release app through its native accessibility tree; never log in.
 final class P99Smoke: XCTestCase {
     func testSettingsPersistAndAppResumes() {
+        continueAfterFailure = false
         let app = XCUIApplication(bundleIdentifier: "io.github.rmyou.p99mobile")
         app.launch()
         XCTAssertTrue(app.buttons["Login"].waitForExistence(timeout: 30))
@@ -16,6 +17,8 @@ final class P99Smoke: XCTestCase {
         XCTAssertEqual(history.value as? String, "1")
         history.tap()
         XCTAssertEqual(history.value as? String, "0")
+        // The shared UI debounces autosave by 250 ms; allow it to finish before a force quit.
+        Thread.sleep(forTimeInterval: 1)
         app.terminate()
         app.launch()
         XCTAssertTrue(app.buttons["Login"].waitForExistence(timeout: 30))
