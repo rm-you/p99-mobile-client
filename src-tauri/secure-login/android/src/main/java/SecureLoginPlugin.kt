@@ -21,12 +21,18 @@ import app.tauri.plugin.Plugin
 import org.json.JSONObject
 import org.json.JSONArray
 import java.io.File
+import java.security.KeyPairGenerator
 import java.security.KeyStore
+import java.security.PrivateKey
+import java.security.spec.MGF1ParameterSpec
 import java.util.UUID
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.OAEPParameterSpec
+import javax.crypto.spec.PSource
+import javax.crypto.spec.SecretKeySpec
 
 @InvokeArg
 class ProfileKey { lateinit var id: String }
@@ -44,7 +50,10 @@ class ProfileLogin {
 @TauriPlugin
 class SecureLoginPlugin(private val activity: Activity) : Plugin(activity) {
     private val legacyPrefix = "p99-login-v1-"
-    private val prefix = "p99-profile-v2-"
+    private val previousPrefix = "p99-profile-v2-"
+    private val prefix = "p99-profile-v3-"
+    // Android Keystore uses SHA-1 for MGF1 on older supported devices.
+    private val oaep = OAEPParameterSpec("SHA-256", "MGF1", MGF1ParameterSpec.SHA1, PSource.PSpecified.DEFAULT)
     // Excluded from Android cloud backup and device transfer.
     private val legacyFile = AtomicFile(File(activity.noBackupFilesDir, "p99-login.json"))
     private val directory = File(activity.noBackupFilesDir, "p99-profiles")
@@ -69,7 +78,7 @@ class SecureLoginPlugin(private val activity: Activity) : Plugin(activity) {
         val character = value.getString("character")
         val server = value.getString("server")
         require(validId(id) && character.matches(Regex("[A-Za-z]{1,63}")))
-        require(server == "green" || server == "blue")
+        require(server in setOf("green", "blue", "quarm"))
         return JSONObject().put("id", id).put("character", character).put("server", server)
     }
 
@@ -112,7 +121,7 @@ class SecureLoginPlugin(private val activity: Activity) : Plugin(activity) {
             .filter { it.endsWith(".json") }.map { it.removeSuffix(".json") }.filter { validId(it) }.distinct().sorted()
         for (id in ids) {
             val entry = read(file(id))
-            require(entry.getInt("version") == 2 && entry.getString("id") == id)
+            require(entry.getInt("version") in 2..3 && entry.getString("id") == id)
             profiles.put(metadata(entry))
         }
         finish(invoke, JSObject().apply {
@@ -133,15 +142,17 @@ class SecureLoginPlugin(private val activity: Activity) : Plugin(activity) {
         directory.mkdirs()
         val target = file(args.id)
         val oldAlias = if (target.baseFile.exists() || File(target.baseFile.path + ".bak").exists()) read(target).getString("alias") else null
-        if (oldAlias != null) require(oldAlias.startsWith(prefix))
+        if (oldAlias != null) require(profileAlias(oldAlias))
         val alias = prefix + UUID.randomUUID().toString()
         var committed = false
         val cleanup = { if (!committed) keyStore().deleteEntry(alias) }
         try {
-            val spec = KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
-                .setKeySize(256)
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+            // Only the private-key operation needs authentication. Sealing data with the
+            // public key does not read any saved secret or require a second prompt.
+            val spec = KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_DECRYPT)
+                .setKeySize(2048)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_RSA_OAEP)
+                .setDigests(KeyProperties.DIGEST_SHA256)
                 .setUserAuthenticationRequired(true)
                 .apply {
                     if (Build.VERSION.SDK_INT >= 30) {
@@ -152,29 +163,34 @@ class SecureLoginPlugin(private val activity: Activity) : Plugin(activity) {
                         setInvalidatedByBiometricEnrollment(true)
                     }
                 }.build()
-            KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").apply { init(spec); generateKey() }
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
-                init(Cipher.ENCRYPT_MODE, keyStore().getKey(alias, null) as SecretKey)
+            val pair = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA, "AndroidKeyStore")
+                .apply { initialize(spec) }.generateKeyPair()
+            val wrapping = Cipher.getInstance("RSA/ECB/OAEPPadding").apply {
+                init(Cipher.ENCRYPT_MODE, pair.public, oaep)
             }
-            authenticate(invoke, cipher, onCancel = cleanup) { unlocked ->
-                unlocked.updateAAD(aad(label))
-                val plain = JSONObject(label.toString()).put("user", args.user).put("pass", args.pass).toString().toByteArray(Charsets.UTF_8)
+            val dataKey = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey().encoded
+            val plain = JSONObject(label.toString()).put("user", args.user).put("pass", args.pass)
+                .toString().toByteArray(Charsets.UTF_8)
+            try {
+                val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
+                    init(Cipher.ENCRYPT_MODE, SecretKeySpec(dataKey, "AES"))
+                    updateAAD(aad(label))
+                }
+                val encrypted = cipher.doFinal(plain)
+                val envelope = JSONObject(label.toString()).put("version", 3).put("alias", alias)
+                    .put("wrappedKey", Base64.encodeToString(wrapping.doFinal(dataKey), Base64.NO_WRAP))
+                    .put("iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
+                    .put("ciphertext", Base64.encodeToString(encrypted, Base64.NO_WRAP))
+                val stream = target.startWrite()
                 try {
-                    val encrypted = unlocked.doFinal(plain)
-                    val envelope = JSONObject(label.toString()).put("version", 2).put("alias", alias)
-                        .put("iv", Base64.encodeToString(unlocked.iv, Base64.NO_WRAP))
-                        .put("ciphertext", Base64.encodeToString(encrypted, Base64.NO_WRAP))
-                    val stream = target.startWrite()
-                    try {
-                        stream.write(envelope.toString().toByteArray(Charsets.UTF_8))
-                        target.finishWrite(stream)
-                    } catch (error: Exception) { target.failWrite(stream); throw error }
-                    committed = true
-                    // A stale key is harmless if cleanup fails; never report a durable save as failed.
-                    if (oldAlias != null) runCatching { keyStore().deleteEntry(oldAlias) }
-                    finish(invoke)
-                } finally { plain.fill(0) }
-            }
+                    stream.write(envelope.toString().toByteArray(Charsets.UTF_8))
+                    target.finishWrite(stream)
+                } catch (error: Exception) { target.failWrite(stream); throw error }
+                committed = true
+                // A stale key is harmless if cleanup fails; never report a durable save as failed.
+                if (oldAlias != null) runCatching { keyStore().deleteEntry(oldAlias) }
+                finish(invoke)
+            } finally { plain.fill(0); dataKey.fill(0) }
         } catch (error: Exception) { cleanup(); throw error }
     }
 
@@ -183,9 +199,9 @@ class SecureLoginPlugin(private val activity: Activity) : Plugin(activity) {
     fun unlock(invoke: Invoke) = operation(invoke) {
         val id = invoke.parseArgs(ProfileKey::class.java).id
         val envelope = read(file(id))
-        require(envelope.getInt("version") == 2 && envelope.getString("id") == id)
+        require(envelope.getInt("version") in 2..3 && envelope.getString("id") == id)
         val label = metadata(envelope)
-        decrypt(invoke, envelope, prefix, label)
+        decrypt(invoke, envelope, if (envelope.getInt("version") == 3) prefix else previousPrefix, label)
     }
 
     @Command
@@ -200,12 +216,27 @@ class SecureLoginPlugin(private val activity: Activity) : Plugin(activity) {
         require(alias.startsWith(expectedPrefix))
         val iv = Base64.decode(envelope.getString("iv"), Base64.NO_WRAP)
         val ciphertext = Base64.decode(envelope.getString("ciphertext"), Base64.NO_WRAP)
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
+        val sealedKey = envelope.getInt("version") == 3
+        val cipher = if (sealedKey) Cipher.getInstance("RSA/ECB/OAEPPadding").apply {
+            init(Cipher.DECRYPT_MODE, keyStore().getKey(alias, null) as PrivateKey, oaep)
+        } else Cipher.getInstance("AES/GCM/NoPadding").apply {
             init(Cipher.DECRYPT_MODE, keyStore().getKey(alias, null) as SecretKey, GCMParameterSpec(128, iv))
         }
         authenticate(invoke, cipher) { unlocked ->
-            if (label != null) unlocked.updateAAD(aad(label))
-            val plain = unlocked.doFinal(ciphertext)
+            val plain = if (sealedKey) {
+                val dataKey = unlocked.doFinal(Base64.decode(envelope.getString("wrappedKey"), Base64.NO_WRAP))
+                try {
+                    require(dataKey.size == 32 && label != null)
+                    Cipher.getInstance("AES/GCM/NoPadding").run {
+                        init(Cipher.DECRYPT_MODE, SecretKeySpec(dataKey, "AES"), GCMParameterSpec(128, iv))
+                        updateAAD(aad(label))
+                        doFinal(ciphertext)
+                    }
+                } finally { dataKey.fill(0) }
+            } else {
+                if (label != null) unlocked.updateAAD(aad(label))
+                unlocked.doFinal(ciphertext)
+            }
             try {
                 val login = JSONObject(plain.toString(Charsets.UTF_8))
                 if (label != null) require(aad(metadata(login)).contentEquals(aad(label)))
@@ -219,12 +250,15 @@ class SecureLoginPlugin(private val activity: Activity) : Plugin(activity) {
         }
     }
 
+    private fun profileAlias(alias: String): Boolean =
+        alias.startsWith(prefix) || alias.startsWith(previousPrefix)
+
     @Command
     fun forget(invoke: Invoke) = operation(invoke) {
         val target = file(invoke.parseArgs(ProfileKey::class.java).id)
         if (target.baseFile.exists() || File(target.baseFile.path + ".bak").exists()) {
             val alias = read(target).getString("alias")
-            require(alias.startsWith(prefix))
+            require(profileAlias(alias))
             keyStore().deleteEntry(alias)
             target.delete()
         }
@@ -239,9 +273,9 @@ class SecureLoginPlugin(private val activity: Activity) : Plugin(activity) {
         finish(invoke)
     }
 
-    private fun authenticate(invoke: Invoke, cipher: Cipher, onCancel: () -> Unit = {}, done: (Cipher) -> Unit) {
+    private fun authenticate(invoke: Invoke, cipher: Cipher, done: (Cipher) -> Unit) {
         val info = BiometricPrompt.PromptInfo.Builder()
-            .setTitle("Unlock P99 login")
+            .setTitle("Unlock saved login")
             .setSubtitle("Use your device lock to protect your account and password")
             .setAllowedAuthenticators(authenticators())
             .apply { if (Build.VERSION.SDK_INT < 30) setNegativeButtonText("Cancel") }
@@ -252,11 +286,11 @@ class SecureLoginPlugin(private val activity: Activity) : Plugin(activity) {
                     try { done(requireNotNull(result.cryptoObject?.cipher)) }
                     catch (error: Exception) {
                         android.util.Log.w("P99SecureLogin", "Secure operation failed: ${error.javaClass.simpleName}")
-                        try { onCancel() } finally { fail(invoke) }
+                        fail(invoke)
                     }
                 }
                 override fun onAuthenticationError(code: Int, message: CharSequence) {
-                    try { onCancel() } finally { fail(invoke) }
+                    fail(invoke)
                 }
                 // A failed fingerprint keeps the system prompt open for another attempt.
             }).authenticate(info, BiometricPrompt.CryptoObject(cipher))

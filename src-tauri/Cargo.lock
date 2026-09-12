@@ -2512,7 +2512,7 @@ dependencies = [
 [[package]]
 name = "p99-logger-client"
 version = "0.1.0"
-source = "git+https://github.com/rm-you/p99-logger-client?branch=main#1ddbccac4b6f0d22e02f37b533f677c56204fee9"
+source = "git+https://github.com/rm-you/p99-logger-client?branch=codex%2Fquarm-protocol#402db75dd0e746b3cc7e54a0523747e9563b55cb"
 dependencies = [
  "anyhow",
  "chrono",

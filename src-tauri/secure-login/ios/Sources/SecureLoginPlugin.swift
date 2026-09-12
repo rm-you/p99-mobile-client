@@ -15,7 +15,7 @@ private struct Profile: Codable, Equatable {
     var valid: Bool {
         UUID(uuidString: id)?.uuidString.lowercased() == id &&
         character.range(of: "^[A-Za-z]{1,63}$", options: .regularExpression) != nil &&
-        ["green", "blue"].contains(server)
+        ["green", "blue", "quarm"].contains(server)
     }
     var value: [String: String] { ["id": id, "character": character, "server": server] }
 }
@@ -44,7 +44,7 @@ class SecureLoginPlugin: Plugin {
 
     private func context() -> LAContext {
         let context = LAContext()
-        context.localizedReason = "Unlock your saved P99 character"
+        context.localizedReason = "Unlock your saved character"
         context.localizedCancelTitle = "Cancel"
         context.touchIDAuthenticationAllowableReuseDuration = 0
         return context

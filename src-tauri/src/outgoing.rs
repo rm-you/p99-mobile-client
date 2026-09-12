@@ -1,6 +1,6 @@
 use p99_logger_client::{
     chat::OutboundChat,
-    client::{CancellationToken, ClientCommand, ClientEvent, ConnectionState},
+    client::{CancellationToken, ClientCommand, ClientEvent, ConnectionState, ServerProtocol},
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -8,9 +8,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-// Match Titanium's message/recipient limits in the networking crate. Its encoder
+// Match the protocol-specific wire limits in the networking crate. Its encoder
 // is private, so validate here to return useful errors before enqueueing a command.
 const MAX_MESSAGE_BYTES: usize = 4095;
+const MAX_QUARM_MESSAGE_BYTES: usize = 2043;
 const QUEUE_SIZE: usize = 8;
 
 /// Only channels supported by this app are accepted across the UI boundary.
@@ -45,18 +46,25 @@ pub enum SendFailure {
 
 impl ChatMessage {
     /// Multiline composition produces one chat message, with line breaks replaced by spaces.
-    fn into_outbound(self) -> Result<OutboundChat, SendFailure> {
-        fn text(value: String) -> Result<String, SendFailure> {
+    fn into_outbound(self, protocol: ServerProtocol) -> Result<OutboundChat, SendFailure> {
+        let text = |value: String| -> Result<String, SendFailure> {
             let value = value.replace("\r\n", " ").replace(['\r', '\n'], " ");
             let value = value.trim();
             if value.is_empty() || value.chars().any(char::is_control) {
                 return Err(SendFailure::InvalidMessage);
             }
-            if value.len() > MAX_MESSAGE_BYTES {
+            let (wire_len, limit) = match protocol {
+                ServerProtocol::Project1999 => (
+                    value.len() + value.bytes().filter(|&b| b == b'%').count() * 4,
+                    MAX_MESSAGE_BYTES,
+                ),
+                ServerProtocol::Quarm => (value.len(), MAX_QUARM_MESSAGE_BYTES),
+            };
+            if wire_len > limit {
                 return Err(SendFailure::MessageTooLong);
             }
             Ok(value.into())
-        }
+        };
         Ok(match self {
             Self::Say { text: value } => OutboundChat::Say(text(value)?),
             Self::Guild { text: value } => OutboundChat::Guild(text(value)?),
@@ -84,6 +92,7 @@ impl ChatMessage {
 }
 
 struct InputState {
+    protocol: ServerProtocol,
     sender: mpsc::SyncSender<ClientCommand>,
     cancel: CancellationToken,
     session_id: Option<String>,
@@ -101,9 +110,14 @@ pub struct CommandInbox {
 
 impl ChatOutbox {
     /// Called only after the previous worker has joined; a new session gets a fresh queue.
-    pub fn open(self: &Arc<Self>, cancel: CancellationToken) -> CommandInbox {
+    pub fn open(
+        self: &Arc<Self>,
+        cancel: CancellationToken,
+        protocol: ServerProtocol,
+    ) -> CommandInbox {
         let (sender, receiver) = mpsc::sync_channel(QUEUE_SIZE);
         *self.0.lock().expect("chat input lock poisoned") = Some(InputState {
+            protocol,
             sender,
             cancel,
             session_id: None,
@@ -117,7 +131,6 @@ impl ChatOutbox {
 
     /// Success means accepted by the local queue, not acknowledged by the game server.
     pub fn send(&self, request: SendChatRequest) -> Result<(), SendFailure> {
-        let message = request.message.into_outbound()?;
         let state = self.0.lock().map_err(|_| SendFailure::NotConnected)?;
         let input = state.as_ref().ok_or(SendFailure::NotConnected)?;
         if input.cancel.is_cancelled()
@@ -128,6 +141,7 @@ impl ChatOutbox {
         {
             return Err(SendFailure::NotConnected);
         }
+        let message = request.message.into_outbound(input.protocol)?;
         input
             .sender
             .try_send(ClientCommand::SendChat(message))
@@ -196,6 +210,32 @@ mod tests {
     }
 
     #[test]
+    fn outbound_limits_follow_the_connected_protocol() {
+        let message = |text: String| ChatMessage::Say { text };
+        assert!(message("x".repeat(2043))
+            .into_outbound(ServerProtocol::Quarm)
+            .is_ok());
+        assert_eq!(
+            message("x".repeat(2044)).into_outbound(ServerProtocol::Quarm),
+            Err(SendFailure::MessageTooLong)
+        );
+        assert!(message("x".repeat(2044))
+            .into_outbound(ServerProtocol::Project1999)
+            .is_ok());
+        assert!(message("%".repeat(2043))
+            .into_outbound(ServerProtocol::Quarm)
+            .is_ok());
+        assert_eq!(
+            message("%".repeat(820)).into_outbound(ServerProtocol::Project1999),
+            Err(SendFailure::MessageTooLong)
+        );
+        assert_eq!(
+            message("é".repeat(1022)).into_outbound(ServerProtocol::Quarm),
+            Err(SendFailure::MessageTooLong)
+        );
+    }
+
+    #[test]
     fn ui_messages_map_to_typed_commands_and_reject_unsupported_channels() {
         let examples = [
             ("say", OutboundChat::Say("example".into())),
@@ -208,11 +248,14 @@ mod tests {
             let message: ChatMessage =
                 serde_json::from_value(serde_json::json!({"channel": channel, "text": "example"}))
                     .unwrap();
-            assert_eq!(message.into_outbound().unwrap(), expected);
+            assert_eq!(
+                message.into_outbound(ServerProtocol::Project1999).unwrap(),
+                expected
+            );
         }
         let message: ChatMessage = serde_json::from_value(serde_json::json!({"channel": "tell", "recipient": " ExampleFriend ", "text": "one\r\ntwo\nthree"})).unwrap();
         assert_eq!(
-            message.into_outbound().unwrap(),
+            message.into_outbound(ServerProtocol::Project1999).unwrap(),
             OutboundChat::Tell {
                 recipient: "ExampleFriend".into(),
                 message: "one two three".into()
@@ -230,7 +273,7 @@ mod tests {
     fn validates_utf8_byte_limits_and_never_echoes_rejected_text() {
         for value in ["", " \n ", "example\0private", "example\tprivate"] {
             assert_eq!(
-                ChatMessage::Say { text: value.into() }.into_outbound(),
+                ChatMessage::Say { text: value.into() }.into_outbound(ServerProtocol::Project1999),
                 Err(SendFailure::InvalidMessage)
             );
         }
@@ -238,13 +281,13 @@ mod tests {
             ChatMessage::Say {
                 text: "é".repeat(2048)
             }
-            .into_outbound(),
+            .into_outbound(ServerProtocol::Project1999),
             Err(SendFailure::MessageTooLong)
         );
         assert!(ChatMessage::Say {
             text: "x".repeat(4095)
         }
-        .into_outbound()
+        .into_outbound(ServerProtocol::Project1999)
         .is_ok());
         for name in [
             "",
@@ -259,7 +302,7 @@ mod tests {
                     recipient: name.into(),
                     text: "example".into()
                 }
-                .into_outbound(),
+                .into_outbound(ServerProtocol::Project1999),
                 Err(SendFailure::InvalidRecipient)
             );
         }
@@ -276,7 +319,7 @@ mod tests {
             outbox.send(request("first")),
             Err(SendFailure::NotConnected)
         );
-        let inbox = outbox.open(CancellationToken::default());
+        let inbox = outbox.open(CancellationToken::default(), ServerProtocol::Project1999);
         assert_eq!(
             outbox.send(request("first")),
             Err(SendFailure::NotConnected)
@@ -312,7 +355,7 @@ mod tests {
     fn rejects_full_queues_cancelled_sessions_and_stale_health_without_blocking() {
         let outbox = Arc::new(ChatOutbox::default());
         let cancel = CancellationToken::default();
-        let inbox = outbox.open(cancel.clone());
+        let inbox = outbox.open(cancel.clone(), ServerProtocol::Project1999);
         inbox.observe(&status(ConnectionState::Connected, "first"));
         for _ in 0..QUEUE_SIZE {
             outbox.send(request("first")).unwrap();

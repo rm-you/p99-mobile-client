@@ -1,3 +1,5 @@
+import type { Server } from "./protocol";
+
 export interface Experience {
   text_size: number;
   compact: boolean;
@@ -25,7 +27,7 @@ export const defaultExperience: Experience = {
   muted_authors: [],
 };
 export interface HistoryOwner {
-  server: "green" | "blue";
+  server: Server;
   character: string;
 }
 export interface HistoryProfile extends HistoryOwner {

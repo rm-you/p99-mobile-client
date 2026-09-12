@@ -17,7 +17,7 @@ pub struct HistoryOwner {
 }
 impl HistoryOwner {
     pub fn validate(&self) -> Result<(), String> {
-        if !["green", "blue"].contains(&self.server.as_str())
+        if !["green", "blue", "quarm"].contains(&self.server.as_str())
             || self.character.is_empty()
             || self.character.len() > 63
             || !self.character.bytes().all(|b| b.is_ascii_alphabetic())
@@ -334,10 +334,15 @@ mod tests {
         s.record(&owner("green"), &record(1), false).unwrap();
         s.record(&owner("green"), &record(1), false).unwrap();
         s.record(&owner("blue"), &record(2), false).unwrap();
+        let mut quarm = record(1);
+        quarm["text"] = "Quarm message".into();
+        quarm["item_links"][0]["body"] = "0000123".into();
+        s.record(&owner("quarm"), &quarm, false).unwrap();
         let reopened = ChatStore::new(p, Experience::default());
         let rows = reopened.load(&owner("green"), 1500).unwrap();
         assert_eq!(rows, vec![record(1)]);
-        assert_eq!(reopened.profiles().unwrap().len(), 2);
+        assert_eq!(reopened.load(&owner("quarm"), 1500).unwrap(), vec![quarm]);
+        assert_eq!(reopened.profiles().unwrap().len(), 3);
         reopened.clear().unwrap();
         assert!(reopened.profiles().unwrap().is_empty());
     }

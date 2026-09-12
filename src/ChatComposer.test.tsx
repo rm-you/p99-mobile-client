@@ -124,7 +124,7 @@ it("grows with content and caps the text area at four lines", () => {
   fireEvent.change(field, { target: { value: "one\ntwo\nthree\nfour\nfive" } });
   expect(field.style.height).toBe("112px");
 });
-it("always replies to the author across chat channels, including outgoing echoes", () => {
+it("replies to other authors across chat channels but never to our own echoes", () => {
   const record: ChatRecord = {
     type: "chat",
     timestamp: "2026-01-01T00:00:00Z",
@@ -145,7 +145,7 @@ it("always replies to the author across chat channels, including outgoing echoes
       sender: "examplecharacter",
       target: "ExampleFriend",
     }),
-  ).toBe("examplecharacter");
+  ).toBeNull();
   for (const channel_name of [
     "say",
     "auction",
@@ -160,4 +160,13 @@ it("always replies to the author across chat channels, including outgoing echoes
   expect(replyRecipient({ ...record, sender: undefined })).toBeNull();
   expect(replyRecipient({ ...record, type: "decode_error" })).toBeNull();
   expect(replyRecipient({ ...record, sender: "Invalid Sender" })).toBeNull();
+});
+
+it("uses Quarm wire limits while retaining the P99 limit", () => {
+  expect(messageError("x".repeat(2043), "quarm")).toBeNull();
+  expect(messageError("x".repeat(2044), "quarm")).toBeTruthy();
+  expect(messageError("é".repeat(1022), "quarm")).toBeTruthy();
+  expect(messageError("x".repeat(2044), "green")).toBeNull();
+  expect(messageError("%".repeat(2043), "quarm")).toBeNull();
+  expect(messageError("%".repeat(820), "green")).toBeTruthy();
 });

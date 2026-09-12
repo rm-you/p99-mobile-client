@@ -7,6 +7,7 @@ import type {
   ExportDocument,
 } from "./experience";
 import ConfirmDialog from "./ConfirmDialog";
+import { serverLabel } from "./protocol";
 interface Info {
   version: string;
   build_id: string;
@@ -161,8 +162,7 @@ export default function Preferences({
             <div>
               <strong>{p.character}</strong>
               <span>
-                P99 {p.server === "green" ? "Green" : "Blue"} ·{" "}
-                {p.messages.toLocaleString()} messages
+                {serverLabel(p.server)} · {p.messages.toLocaleString()} messages
               </span>
             </div>
             <div className="history-actions">

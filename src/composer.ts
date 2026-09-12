@@ -1,4 +1,5 @@
-import type { ChatRecord } from "./protocol";
+import type { ChatRecord, Server } from "./protocol";
+import { isOwnMessage } from "./chatTools";
 
 export const SEND_CHANNELS = [
   "say",
@@ -22,19 +23,25 @@ export const messageText = (text: string) =>
   text.replace(/\r\n|[\r\n]/g, " ").trim();
 export const validRecipient = (name: string) =>
   /^[a-z]{1,63}$/i.test(name.trim());
-export function messageError(text: string): string | null {
+export function messageError(
+  text: string,
+  server: Server = "green",
+): string | null {
   const value = messageText(text);
   if (!value) return null;
   if (/[\x00-\x1f\x7f-\x9f]/.test(value))
     return "Remove control characters from the message.";
-  if (new TextEncoder().encode(value).length > 4095)
+  const wireBytes =
+    new TextEncoder().encode(value).length +
+    (server === "quarm" ? 0 : (value.match(/%/g)?.length ?? 0) * 4);
+  if (wireBytes > (server === "quarm" ? 2043 : 4095))
     return "Message is too long. Shorten it before sending.";
   return null;
 }
 
-/** Reply privately to the identified author, regardless of the original channel. */
+/** Reply privately to another author, regardless of the original channel. */
 export function replyRecipient(record: ChatRecord): string | null {
-  if (record.type !== "chat") return null;
+  if (record.type !== "chat" || isOwnMessage(record)) return null;
   const name = record.sender;
   return name && validRecipient(name) ? name.trim() : null;
 }

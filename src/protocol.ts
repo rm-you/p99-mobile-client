@@ -1,4 +1,11 @@
-export type Server = "green" | "blue";
+export const SERVERS = ["green", "blue", "quarm"] as const;
+export type Server = (typeof SERVERS)[number];
+const SERVER_LABELS: Record<Server, string> = {
+  green: "P99 Green",
+  blue: "P99 Blue",
+  quarm: "Quarm",
+};
+export const serverLabel = (server: Server) => SERVER_LABELS[server];
 export type ConnectionState =
   "connecting" | "connected" | "zoning" | "disconnected" | "stopped";
 /** Ordered milestones emitted by the native client for each connection attempt. */

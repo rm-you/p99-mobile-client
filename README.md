@@ -1,6 +1,6 @@
 # P99 Mobile Chat
 
-A native Android chat app built with Tauri 2, React, and the
+A native Android chat app for Project 1999 and Project Quarm, built with Tauri 2, React, and the
 [reusable Rust P99 client](https://github.com/rm-you/p99-logger-client).
 The phone connects directly to the login, world, and zone servers; no relay
 service or graphical EverQuest client is required.
@@ -18,9 +18,16 @@ snapshot retain their original terms; see [component and data notices](DEPENDENC
 
 ## Using the app
 
-Select **P99 Green** or **P99 Blue**, enter your login server account and
+Select **P99 Green**, **P99 Blue**, or **Quarm**, enter your login server account and
 password, and provide the name of an existing character, then tap **Login**. The character joins
 the zone where you last left them. Log out of the graphical game client first.
+
+Quarm uses your **TAKP login-server account**, while P99 uses your EQEmulator
+login-server account. The selected server chooses the appropriate login endpoint
+and wire protocol automatically. Saved characters and optional chat history keep
+Quarm separate from P99, even when character names match. Quarm login and chat
+have been exercised in the Android app; the updated version announcement awaits
+a manual retest. See the [roadmap](ROADMAP.md).
 
 The chat view receives all communication channels and lets you filter by
 channel or search the most recent 1,500 messages. Expand **Filters** and tap the colored pills to select any
@@ -40,13 +47,14 @@ reference item ID; missing or conflicting entries show an unavailable message.
 **View on P99 Wiki** opens the item page in your browser only when tapped.
 The catalog contains community reference data and can have gaps; see its
 [source and update notes](src-tauri/data/README.md). Item link IDs and original
-link bodies remain available in the received records. Clearing the view removes its in-memory messages; saved history is cleared separately in Settings.
+link bodies remain available in the received records. Quarm item details identify
+the catalog as P99 reference data because Quarm stats may differ. Clearing the view removes its in-memory messages; saved history is cleared separately in Settings.
 
 Choose Say, Tell, Guild, Auction, OOC, or Shout in the composer to send a message.
 The text box starts at one line and grows to four before scrolling. Tap the
 paper-plane icon to send; Enter adds a line, and Ctrl/Cmd+Enter also submits.
 Line breaks become spaces in one game message. For tells, enter a character name
-or swipe any message with an identified author left or right to select that author.
+or swipe another player's message left or right to select its author.
 Replies always use Tell, regardless of
 the original channel. Sent-tell echoes display and filter as Tell as well.
 On Android, the chat view resizes above the on-screen keyboard so the message
@@ -56,8 +64,9 @@ Sending is enabled only while the current character is connected. Drafts survive
 tab changes and failed submissions, but are cleared when starting a new login.
 They are held only in memory. Pending commands are discarded when the connection
 ends, so reconnecting cannot unexpectedly replay unsent chat. Submission means
-the local network queue accepted the message; the app displays server messages
-without adding a synthetic delivered echo. Group, Raid, emotes, and slash-command
+the local network queue accepted the message. A local pending row appears immediately
+and is replaced by the matching server record when confirmed. Only received
+records enter saved history or exports. Group, Raid, emotes, and slash-command
 parsing are not offered by the composer.
 
 Server, selected channels, and follow-latest preferences save on this
@@ -72,7 +81,8 @@ character field starts blank; the manual form never restores a previous characte
 
 Use the pencil to edit a saved character. Leave both account and password blank
 to keep its existing login, or enter both to replace it. Keeping the login during
-an Android edit requires unlocking it and then confirming the replacement save.
+an Android edit requires one unlock. Saving credentials you have just entered
+does not require an additional unlock.
 Swipe left or tap the trash icon to delete an entry; both ask for confirmation. The manual form remains
 available for connecting without saving.
 
@@ -81,8 +91,10 @@ assign that login a character and server. The old entry is kept until the new
 profile is successfully saved. If cleanup fails, the previous entry remains
 visible for explicit removal.
 
-- Android uses an AES-256-GCM key in Android Keystore, with authentication
-  required for each encryption or decryption. Android 11+ supports a strong
+- Android encrypts each saved tuple with AES-256-GCM and seals its random data
+  key with an Android Keystore RSA-OAEP public key. The private key requires
+  authentication on every unlock; encrypting a replacement needs no second
+  prompt. Existing AES-only entries migrate when saved successfully. Android 11+ supports a strong
   biometric or device PIN/pattern/password; Android 7–10 requires an enrolled
   strong biometric. Encrypted data stays in the app's no-backup directory.
 - iOS uses a device-only Keychain item requiring user presence (Face ID,
@@ -142,7 +154,8 @@ messages** shows a count when new messages arrive. A divider marks the new-messa
 boundary. Filters do not mark hidden messages read. Unread counts are session-only
 and are not restored with saved history.
 
-Swipe an authored message in either direction to compose a tell. Long-press it
+Swipe another player's message in either direction to compose a tell. Your own
+messages have no swipe/reply action, but can still be copied or shared. Long-press a message
 to copy, share, reply, or mute the author. Tapping outside the popup dismisses it.
 Screen readers can use the message action control; keyboard focus reveals that
 control without adding buttons to every visible row. Muted messages are hidden
@@ -150,10 +163,14 @@ and cannot trigger alerts, but are still kept in enabled history. Unmute authors
 in Settings. Your own messages are labeled **You**, and the composer identifies a
 tell's recipient explicitly.
 
-Send feedback distinguishes **Submitting**, **Submitted**, **Server echo received**,
-and failure. An echo is evidence of a server response, not a read receipt. After
-15 seconds without a matching echo, the status says **Submitted · no echo received**;
-this does not imply that sending failed. Failed submissions retain the draft.
+A small clock at the bottom-right of your outgoing message indicates **Sending**;
+a checkmark means **Sent**, confirmed by the server. It is not a read receipt.
+After 15 seconds without confirmation, an amber clock indicates **Unconfirmed**;
+this does not mean the send failed. A failed submission has a warning icon and
+retains its draft for retry. Icons have accessible labels and descriptive tooltips.
+A tell to yourself can produce both a received tell and a sent confirmation; the
+UI pairs these into one row while preserving both underlying records. Separate
+repeated sends remain separate.
 Connection interruptions and resumptions insert timeline notices about possible
 message gaps. These UI markers are separate from the game's chat records.
 
@@ -270,8 +287,10 @@ build commands sync the committed icons into initialized Android/iOS projects.
 - `p99-logger-client`: protocol handling, authentication, decoding, retries, and
   the bundled asset checksum inventory. These stay in the library repository.
 
-The Rust manifest depends on the library's `main` branch with its CLI feature
-disabled. `Cargo.lock` records the exact resolved commit. To adopt a newer
+The Rust manifest temporarily depends on the library's `codex/quarm-protocol`
+branch from [PR #6](https://github.com/rm-you/p99-logger-client/pull/6), with its CLI
+feature disabled. Return to `main` once that PR merges. `Cargo.lock` records the
+exact resolved commit. To adopt a newer
 library revision deliberately, run `cargo update -p p99-logger-client` inside
 `src-tauri`, then review and commit the lockfile change. Inline links require the
 logger's additive `text_start` / `text_end` fields; `start` / `end` describe the
@@ -292,7 +311,7 @@ Rust desktop checks require the platform's Tauri system libraries even though
 the unit tests do not launch a webview. Tests contain synthetic examples only.
 The previous single-channel preference is migrated automatically when loaded.
 The frontend and Rust checks do not establish successful mobile packaging or
-an actual phone-to-P99 connection; those require device testing.
+an actual phone-to-game-server connection; those require device testing.
 CI additionally builds an Android APK so Kotlin service and manifest changes are
 compiled as well as Rust. A successful APK build still requires device validation.
 

@@ -211,6 +211,64 @@ function sessionStatus(state: SessionStatus["state"]): SessionStatus {
   };
 }
 
+describe("Quarm server selection", () => {
+  it("routes manual login and saved labels to Quarm", async () => {
+    render(<App />);
+    const quarm = await screen.findByRole("button", { name: "Quarm" });
+    fireEvent.click(quarm);
+    fireEvent.change(screen.getByLabelText("Login account"), {
+      target: { value: "EXAMPLE_ACCOUNT" },
+    });
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "EXAMPLE_PASSWORD" },
+    });
+    fireEvent.change(screen.getByLabelText("Character name"), {
+      target: { value: "ExampleCharacter" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Login" }));
+    await waitFor(() =>
+      expect(native.invoke).toHaveBeenCalledWith(
+        "connect",
+        expect.objectContaining({
+          request: {
+            user: "EXAMPLE_ACCOUNT",
+            pass: "EXAMPLE_PASSWORD",
+            character: "ExampleCharacter",
+            server: "quarm",
+          },
+        }),
+      ),
+    );
+    expect(
+      await screen.findByText(/Save ExampleCharacter on Quarm/),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(savedProfiles[0]?.server).toBe("quarm"));
+    fireEvent.click(screen.getByRole("button", { name: "Connection" }));
+    expect(
+      await screen.findByRole("button", {
+        name: "Unlock and connect ExampleCharacter · Quarm",
+      }),
+    ).toBeTruthy();
+  });
+  it("unlocks a saved Quarm profile without substituting P99", async () => {
+    savedProfiles = [{ ...profile, server: "quarm" }];
+    render(<App />);
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Unlock and connect SavedCharacter · Quarm",
+      }),
+    );
+    await waitFor(() =>
+      expect(native.invoke).toHaveBeenCalledWith(
+        "connect_saved",
+        expect.objectContaining({ id: profile.id }),
+      ),
+    );
+    expect(await screen.findByText("SavedCharacter · Quarm")).toBeTruthy();
+  });
+});
+
 describe("connection and chat", () => {
   it("shows connection stages and health without packet diagnostics or counts", async () => {
     await connect();
@@ -219,9 +277,9 @@ describe("connection and chat", () => {
     const progress = () =>
       screen.getByRole("progressbar", { name: "Sign-in progress" });
     expect(progress().getAttribute("aria-valuenow")).toBe("0");
-    expect(health().textContent).toBe("Signing in to P99…");
+    expect(health().textContent).toBe("Signing in…");
     send({ type: "diagnostic", data: "World opcode 0x1234: deadbeef" });
-    expect(health().textContent).toBe("Signing in to P99…");
+    expect(health().textContent).toBe("Signing in…");
     for (const [stage, percentage, label] of [
       ["authenticating", 13, "Checking login details…"],
       ["selecting_server", 25, "Selecting server…"],
@@ -262,9 +320,9 @@ describe("connection and chat", () => {
     expect(document.querySelector(".connection-status.online")).toBeNull();
     send({ type: "status", data: sessionStatus("connecting") });
     expect(progress().getAttribute("aria-valuenow")).toBe("0");
-    expect(health().textContent).toBe("Signing in to P99…");
+    expect(health().textContent).toBe("Signing in…");
     fireEvent.click(screen.getByRole("button", { name: "Connection" }));
-    expect(health().textContent).toBe("Signing in to P99…");
+    expect(health().textContent).toBe("Signing in…");
     act(() =>
       native.channels[0].onmessage({
         type: "finished",
@@ -884,9 +942,10 @@ it("sends through the current session and privately replies to public chat witho
       },
     }),
   );
-  // Only server records appear in the log; enqueueing does not fake a delivered echo.
+  // The outgoing row is visible immediately, with confirmation still pending.
   expect(screen.getAllByText("Example auction")).toHaveLength(1);
-  expect(screen.queryByText("example reply")).toBeNull();
+  expect(screen.getByText("example reply")).toBeTruthy();
+  expect(screen.getByRole("status", { name: "Sending" })).toBeTruthy();
   send({
     type: "reconnecting",
     data: { error: "synthetic transport failure", delay_seconds: 5 },
@@ -1017,14 +1076,19 @@ it("loads history before login and keeps incoming messages without marking histo
   const calls = native.invoke.mock.calls.map(([name]) => name);
   expect(calls.indexOf("load_history")).toBeLessThan(calls.indexOf("connect"));
 });
-it("shows submitted versus echoed feedback and records reconnect gaps", async () => {
+it("shows delivery icons on the outgoing row without duplicating the confirmed message", async () => {
   await connect();
   send({ type: "status", data: sessionStatus("connected") });
   fireEvent.change(screen.getByLabelText("Message"), {
     target: { value: "Synthetic reply" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Send message" }));
-  await screen.findByText("say · Submitted");
+  await screen.findByRole("status", { name: "Sending" });
+  expect(screen.getAllByText("Synthetic reply")).toHaveLength(1);
+  expect(
+    screen.getByRole("status", { name: "Sending" }).closest("article")
+      ?.textContent,
+  ).toContain("Synthetic reply");
   send({
     type: "record",
     data: sampleRecord(1, {
@@ -1033,7 +1097,13 @@ it("shows submitted versus echoed feedback and records reconnect gaps", async ()
       text: "Synthetic reply",
     }),
   });
-  expect(screen.getByText("say · Server echo received")).toBeTruthy();
+  expect(
+    screen.getByRole("status", { name: "Sent" }).closest("article")
+      ?.textContent,
+  ).toContain("Synthetic reply");
+  expect(screen.queryByRole("status", { name: "Sending" })).toBeNull();
+  expect(screen.getAllByText("Synthetic reply")).toHaveLength(1);
+  expect(screen.queryByText(/Server echo received/)).toBeNull();
   expect(screen.getByText("You")).toBeTruthy();
   send({
     type: "reconnecting",
@@ -1104,4 +1174,111 @@ it("does not start a login after disconnecting during history loading", async ()
   expect(
     native.invoke.mock.calls.some(([command]) => command === "connect"),
   ).toBe(false);
+});
+
+it("keeps one pending self-tell until confirmation and never invokes a second send", async () => {
+  await connect();
+  send({ type: "status", data: sessionStatus("connected") });
+  fireEvent.change(screen.getByLabelText("Send channel"), {
+    target: { value: "tell" },
+  });
+  fireEvent.change(screen.getByLabelText("Tell recipient"), {
+    target: { value: "ExampleCharacter" },
+  });
+  fireEvent.change(screen.getByLabelText("Message"), {
+    target: { value: "Synthetic self tell" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  await screen.findByRole("status", { name: "Sending" });
+  const received = sampleRecord(1, {
+    sender: "ExampleCharacter",
+    target: "ExampleCharacter",
+    channel: 7,
+    channel_name: "tell",
+    text: "Synthetic self tell",
+  });
+  send({ type: "record", data: received });
+  expect(screen.getAllByText("Synthetic self tell")).toHaveLength(1);
+  expect(screen.getByRole("status", { name: "Sending" })).toBeTruthy();
+  send({
+    type: "record",
+    data: { ...received, message_id: 2, channel: 14, channel_name: "unknown" },
+  });
+  expect(screen.getAllByText("Synthetic self tell")).toHaveLength(1);
+  expect(screen.getByRole("status", { name: "Sent" })).toBeTruthy();
+  expect(
+    native.invoke.mock.calls.filter(([name]) => name === "send_chat"),
+  ).toHaveLength(1);
+});
+
+it("leaves a failed message and its draft available without showing success", async () => {
+  await connect();
+  send({ type: "status", data: sessionStatus("connected") });
+  const fallback = native.invoke.getMockImplementation()!;
+  native.invoke.mockImplementation((command: string, args: any) =>
+    command === "send_chat"
+      ? Promise.reject("queue_full")
+      : fallback(command, args),
+  );
+  fireEvent.change(screen.getByLabelText("Message"), {
+    target: { value: "Synthetic failed send" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  await screen.findByRole("status", { name: "Not sent" });
+  expect((screen.getByLabelText("Message") as HTMLTextAreaElement).value).toBe(
+    "Synthetic failed send",
+  );
+  expect(screen.queryByRole("status", { name: "Sent" })).toBeNull();
+  expect(
+    native.invoke.mock.calls.filter(([name]) => name === "send_chat"),
+  ).toHaveLength(1);
+});
+
+it("keeps copy and share on our own messages without offering a self reply", async () => {
+  await connect();
+  send({
+    type: "record",
+    data: sampleRecord(1, { sender: "examplecharacter", channel_name: "say" }),
+  });
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: "Actions for examplecharacter message",
+    }),
+  );
+  expect(screen.getByRole("button", { name: "Copy message" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Share message" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /^Tell / })).toBeNull();
+});
+
+it("shows unconfirmed after a timeout and accepts a late confirmation without resending", async () => {
+  await connect();
+  send({ type: "status", data: sessionStatus("connected") });
+  vi.useFakeTimers();
+  try {
+    fireEvent.change(screen.getByLabelText("Message"), {
+      target: { value: "Synthetic delayed send" },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    });
+    expect(screen.getByRole("status", { name: "Sending" })).toBeTruthy();
+    act(() => vi.advanceTimersByTime(15001));
+    expect(screen.getByRole("status", { name: "Unconfirmed" })).toBeTruthy();
+    expect(screen.queryByRole("status", { name: "Sent" })).toBeNull();
+    send({
+      type: "record",
+      data: sampleRecord(1, {
+        sender: "ExampleCharacter",
+        channel_name: "say",
+        text: "Synthetic delayed send",
+      }),
+    });
+    expect(screen.getByRole("status", { name: "Sent" })).toBeTruthy();
+    expect(screen.getAllByText("Synthetic delayed send")).toHaveLength(1);
+    expect(
+      native.invoke.mock.calls.filter(([name]) => name === "send_chat"),
+    ).toHaveLength(1);
+  } finally {
+    vi.useRealTimers();
+  }
 });

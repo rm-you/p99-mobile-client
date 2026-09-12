@@ -33,7 +33,7 @@ uuid = { version = "1", features = ["v4"] }
 tauri-plugin-opener = "2"
 tauri-plugin-secure-login = { path = "secure-login" }
 tauri-plugin-session-service = { path = "session-service" }
-p99-logger-client = { git = "https://github.com/rm-you/p99-logger-client", branch = "main", default-features = false }
+p99-logger-client = { git = "https://github.com/rm-you/p99-logger-client", branch = "codex/quarm-protocol", default-features = false }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

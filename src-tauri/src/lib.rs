@@ -47,6 +47,7 @@ fn start_session(
         server: match request.server {
             Server::Green => "green",
             Server::Blue => "blue",
+            Server::Quarm => "quarm",
         }
         .into(),
         character: request.character.trim().into(),
