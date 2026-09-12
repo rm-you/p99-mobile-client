@@ -46,12 +46,17 @@ are iOS 15. Builds use an iOS 26 SDK on the hosted runner.
 
 ### Verified checkpoint
 
-[Commit 81fe8f0's hosted run](https://github.com/rm-you/p99-mobile-client/actions/runs/34694810526)
+[Commit 74be230's successful hosted run](https://github.com/rm-you/p99-mobile-client/actions/runs/34696183202)
 compiled the full app and both Swift plugins. Its iPhone 15 Pro Max Simulator
 on iOS 26.5 passed the packaged-app XCTest: startup without a saved-login error,
 default-on history, an opt-out retained across termination/relaunch, and resume
 from the home screen. Screenshots and the XCTest result are attached to the run.
 No game credentials were entered and no game connection was attempted.
+
+The same run built a 4.6 MB unsigned ARM64 device IPA with iOS 15 minimum,
+the correct app identity, Face ID purpose text, and the app privacy manifest.
+The device executable contains no Simulator test identity. AltStore re-signing,
+physical-device behavior, and TestFlight signing/upload remain unverified.
 
 Local checks also passed: 64 frontend tests, 37 Rust tests, Android Clippy with
 warnings denied, production frontend build, formatting, and 10 packaging-script
