@@ -26,13 +26,16 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - uses: actions/cache@v6
+      - uses: actions/cache/restore@v6
+        id: rust-cache
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: ios-${{ runner.arch }}-xcode26-${{ hashFiles('rust-toolchain.toml', 'src-tauri/Cargo.lock', 'package-lock.json') }}
+          key: ios-${{ runner.arch }}-xcode26-${{ hashFiles('rust-toolchain.toml', 'src-tauri/Cargo.lock', 'package-lock.json') }}-${{ github.sha }}
+          restore-keys: |
+            ios-${{ runner.arch }}-xcode26-${{ hashFiles('rust-toolchain.toml', 'src-tauri/Cargo.lock', 'package-lock.json') }}-
       - name: Install build prerequisites
         run: |
           xcodebuild -version
@@ -46,6 +49,8 @@ jobs:
         run: |
           npm run tauri -- ios init --ci
           python3 scripts/prepare_ios.py
+          swift package --package-path src-tauri/secure-login/ios dump-package > /dev/null
+          swift package --package-path src-tauri/session-service/ios dump-package > /dev/null
           npm run tauri -- ios build --ci --target aarch64-sim --no-sign
       - name: Launch the packaged app
         run: python3 scripts/ios_smoke.py
@@ -69,3 +74,12 @@ jobs:
           path: src-tauri/gen/apple/build/arm64/*.ipa
           if-no-files-found: error
           retention-days: 7
+      - name: Preserve compiled dependencies even if a later check fails
+        uses: actions/cache/save@v6
+        if: ${{ !cancelled() && steps.rust-cache.outputs.cache-hit != 'true' }}
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ steps.rust-cache.outputs.cache-primary-key }}

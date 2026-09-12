@@ -82,6 +82,7 @@ For hosted Mac builds, unsigned device candidates, and TestFlight setup, see
 
 ```sh
 npm run tauri -- ios init
+python3 scripts/prepare_ios.py
 npm run tauri -- ios dev
 # Build a release package:
 npm run tauri -- ios build
