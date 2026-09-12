@@ -135,7 +135,8 @@ settings migration, notification matching/privacy, export structure, message
 actions, unread filtering, and send-echo correlation. Platform packaging and
 emulator checks are recorded separately from live P99 or physical-device tests.
 Remaining: physical Android notification/lock-screen and accessibility checks;
-Xcode build and real iOS sharing, appearance, and device-lifecycle validation.
+real iOS sharing, appearance, and device-lifecycle validation. The complete iOS
+application and both Swift plugins compile on the hosted Xcode runner.
 
 ## 6. Direct Android 1.0 release
 

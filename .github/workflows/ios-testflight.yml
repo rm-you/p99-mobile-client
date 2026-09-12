@@ -87,6 +87,7 @@ jobs:
           PY
           npm run tauri -- ios init --ci --config "$config"
           python3 scripts/prepare_ios.py
+          python3 scripts/resolve_ios.py
           npm run tauri -- ios build --ci --target aarch64 --export-method app-store-connect --config "$config"
           git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
           ipa=(src-tauri/gen/apple/build/arm64/*.ipa)

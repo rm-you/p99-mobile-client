@@ -32,6 +32,7 @@ npm ci
 rustup target add aarch64-apple-ios aarch64-apple-ios-sim
 npm run tauri -- ios init --ci
 python3 scripts/prepare_ios.py --simulator
+python3 scripts/resolve_ios.py
 npm run tauri -- ios build --ci --target aarch64-sim --no-sign
 python3 scripts/ios_smoke.py
 npm run tauri -- ios build --ci --target aarch64 --no-sign
@@ -39,6 +40,19 @@ npm run tauri -- ios build --ci --target aarch64 --no-sign
 
 Xcode and `xcodegen` must be installed. App and native plugin deployment minimums
 are iOS 15. Builds use an iOS 26 SDK on the hosted runner.
+
+### Verified checkpoint
+
+[Commit 81fe8f0's hosted run](https://github.com/rm-you/p99-mobile-client/actions/runs/34694810526)
+compiled the full app and both Swift plugins. Its iPhone 15 Pro Max Simulator
+on iOS 26.5 passed the packaged-app XCTest: startup without a saved-login error,
+default-on history, an opt-out retained across termination/relaunch, and resume
+from the home screen. Screenshots and the XCTest result are attached to the run.
+No game credentials were entered and no game connection was attempted.
+
+Local checks also passed: 64 frontend tests, 37 Rust tests, Android Clippy with
+warnings denied, production frontend build, formatting, and 10 packaging-script
+tests. These are separate from the real-device checks below.
 
 ## One-time TestFlight setup
 
@@ -79,7 +93,8 @@ are scoped to the build/upload step; temporary files are removed afterward.
 
 ## Upload a beta
 
-Run `iOS TestFlight` manually for a commit with successful **Checks** and **iOS
+After the workflows are merged onto the default branch, run `iOS TestFlight`
+manually for a commit with successful **Checks** and **iOS
 checks** runs. Supply an unused iOS build number from 1 to 9999. This changes the
 iOS bundle build number only; it does not publish an Android release or move a tag.
 

@@ -79,8 +79,9 @@ in the emulator. CI also builds the ARM64 APK to compile native Kotlin changes.
 Test Doze on an emulator or test device with `adb shell dumpsys deviceidle force-idle`;
 restore it with `adb shell dumpsys deviceidle unforce` and
 `adb shell dumpsys battery reset`. Verify recovery instead of assuming the service
-bypasses idle restrictions. Physical-device battery behavior and an iOS/Xcode
-build require separate validation.
+bypasses idle restrictions. Physical-device battery behavior requires separate
+validation. Hosted Xcode/Simulator checks are described in
+[the iOS testing guide](../../docs/IOS_TESTING.md).
 
 For keyboard layout, check the actual device display with the soft keyboard
 visible, including a multiline draft and a tell recipient. The composer must

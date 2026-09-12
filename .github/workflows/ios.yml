@@ -49,6 +49,7 @@ jobs:
         run: |
           npm run tauri -- ios init --ci
           python3 scripts/prepare_ios.py --simulator
+          python3 scripts/resolve_ios.py
           swift package --package-path src-tauri/secure-login/ios dump-package > /dev/null
           swift package --package-path src-tauri/session-service/ios dump-package > /dev/null
           npm run tauri -- ios build --ci --target aarch64-sim --no-sign
@@ -63,6 +64,7 @@ jobs:
           retention-days: 7
       - name: Build unsigned device candidate
         run: |
+          python3 scripts/resolve_ios.py
           npm run tauri -- ios build --ci --target aarch64 --no-sign
           git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
           ipa=(src-tauri/gen/apple/build/arm64/*.ipa)

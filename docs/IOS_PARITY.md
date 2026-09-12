@@ -4,9 +4,9 @@ Audit date: September 12, 2026. Source reviewed: `96590168fe63a7b0bb0388000ecbd9
 on `codex/default-chat-history`, including the next-version default for saving chat.
 The proposed physical test device is an iPhone 15 Pro Max, reported running iOS 26.6.1.
 
-Most foreground functionality already has shared code or an iOS implementation.
-The largest immediate gap is validation: the mobile repository has no iOS build
-job, and its Swift plugins and packaged application have not been verified on iOS.
+Most foreground functionality already had shared code or an iOS implementation.
+At the audit, the largest immediate gap was validation: the repository had no iOS
+build job, and its Swift plugins and packaged app had not been verified on iOS.
 Source coverage is not evidence of a working iPhone build.
 
 ## Implementation follow-up
@@ -14,9 +14,11 @@ Source coverage is not evidence of a working iPhone build.
 The `codex/ios-parity` branch adds native visibility handling, local notifications,
 one-operation Keychain edits, hosted Simulator/device builds, and a prepared
 TestFlight workflow. See [IOS_TESTING.md](IOS_TESTING.md) for current build commands
-and signing setup. The first baseline Simulator build compiled and launched; its
-unsigned Keychain status error prompted a Simulator signing check. Physical-device
-behavior remains unverified. The catalog below records the pre-implementation audit.
+and signing setup. The full app builds and passes packaged startup, settings
+persistence, and resume tests on an iPhone 15 Pro Max Simulator running iOS 26.5.
+Simulated Keychain identity fixes the baseline's saved-login startup error.
+Physical-device behavior remains unverified. The catalog below records the
+pre-implementation audit.
 
 ## Baseline feature catalog
 
@@ -170,7 +172,7 @@ update behavior.
 | Copy and share | Text, JSONL, and diagnostics export through native UI with intended content; cancellation is harmless. |
 | Short app switch and longer screen lock | Best effort while executable; honest state and bounded recovery on return; no false promise that missed chat was captured. |
 | Wi-Fi/cellular change and airplane mode | No duplicate worker, uncontrolled retries, or replayed sends; clear recovery or login action. |
-| Notifications, once implemented | Permission acceptance/denial, test alert, privacy previews, and filtering work while the process can receive chat. |
+| Notifications | Permission acceptance/denial, test alert, privacy previews, and filtering work while the process can receive chat. |
 | Disconnect, force quit, relaunch | Clean explicit logout when possible; no autonomous login or secret exposure after termination. |
 
 The first useful beta should prove foreground login/chat, protected saved characters,
