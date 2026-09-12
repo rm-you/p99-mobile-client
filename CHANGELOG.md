@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## P99 Mobile Chat 1.1.0
 
 - Show pending/sent indicators on each outgoing message, combine self-tell
   receipt/confirmation pairs, and remove swipe/reply from your own messages.
@@ -13,8 +13,8 @@
 - Apply each server's outbound chat limits and label Quarm item details as P99
   reference data.
 - Update the networking dependency with Quarm zone-port handling and DLL version
-  announcements. Live login and chat have been exercised; the version warning
-  retest is pending.
+  announcements. Live Quarm login, chat, and the removal of the outdated-client
+  warning have been confirmed.
 - Preserve release SDK setup fixes and support manually retrying an existing
   release tag without moving it or replacing published assets.
 

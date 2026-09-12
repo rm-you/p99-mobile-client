@@ -793,7 +793,7 @@ License texts: fb72181dd02473b6e42749e14362ede6ba6202540dcc2ce98299ed9051fbde61
 
 Rust: p99-logger-client 0.1.0
 Declared license: MIT
-Source: git+https://github.com/rm-you/p99-logger-client?branch=codex/quarm-protocol#402db75dd0e746b3cc7e54a0523747e9563b55cb
+Source: git+https://github.com/rm-you/p99-logger-client?branch=main#27c56ecc6d4a43b750ed26882ab7cd8a06f61e61
 License texts: 2d2d378b11d46176a8ad1ba4840e4bf21d1b9df23344a53af3cdcfd7a59eccba
 
 Rust: parking_lot 0.12.5

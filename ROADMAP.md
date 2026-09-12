@@ -17,9 +17,9 @@ world is `The Project Quarm Server Server`, including TAKP's appended suffix.
 The networking crate fixes the zone port's byte order and now announces DLL
 version 7 before zone admission completes. Exact version packets and requests
 before/after admission pass a synthetic localhost-zone regression. A live retest
-of the version warning remains pending, along with broader item-link,
-long-duration connection, and reconnect coverage.
-The networking dependency uses PR #6's branch until it merges into `main`.
+confirmed that Quarm connects without the outdated-client warning. Broader
+item-link, long-duration connection, and reconnect coverage remain outstanding.
+The networking dependency uses the library's `main` branch.
 
 ## 1. Persist settings and protect saved credentials
 

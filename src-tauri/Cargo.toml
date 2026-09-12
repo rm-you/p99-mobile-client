@@ -4,7 +4,7 @@ resolver = "2"
 
 [package]
 name = "p99-mobile-client"
-version = "1.0.0"
+version = "1.1.0"
 description = "Project 1999 mobile chat client"
 edition = "2021"
 license = "MIT"
@@ -33,7 +33,7 @@ uuid = { version = "1", features = ["v4"] }
 tauri-plugin-opener = "2"
 tauri-plugin-secure-login = { path = "secure-login" }
 tauri-plugin-session-service = { path = "session-service" }
-p99-logger-client = { git = "https://github.com/rm-you/p99-logger-client", branch = "codex/quarm-protocol", default-features = false }
+p99-logger-client = { git = "https://github.com/rm-you/p99-logger-client", branch = "main", default-features = false }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

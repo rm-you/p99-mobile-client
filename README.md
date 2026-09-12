@@ -25,9 +25,9 @@ the zone where you last left them. Log out of the graphical game client first.
 Quarm uses your **TAKP login-server account**, while P99 uses your EQEmulator
 login-server account. The selected server chooses the appropriate login endpoint
 and wire protocol automatically. Saved characters and optional chat history keep
-Quarm separate from P99, even when character names match. Quarm login and chat
-have been exercised in the Android app; the updated version announcement awaits
-a manual retest. See the [roadmap](ROADMAP.md).
+Quarm separate from P99, even when character names match. Quarm login, chat,
+and the DLL version announcement have been confirmed in the Android app. See
+the [roadmap](ROADMAP.md).
 
 The chat view receives all communication channels and lets you filter by
 channel or search the most recent 1,500 messages. Expand **Filters** and tap the colored pills to select any
@@ -287,10 +287,8 @@ build commands sync the committed icons into initialized Android/iOS projects.
 - `p99-logger-client`: protocol handling, authentication, decoding, retries, and
   the bundled asset checksum inventory. These stay in the library repository.
 
-The Rust manifest temporarily depends on the library's `codex/quarm-protocol`
-branch from [PR #6](https://github.com/rm-you/p99-logger-client/pull/6), with its CLI
-feature disabled. Return to `main` once that PR merges. `Cargo.lock` records the
-exact resolved commit. To adopt a newer
+The Rust manifest depends on the library's `main` branch, with its CLI feature
+disabled. `Cargo.lock` records the exact resolved commit. To adopt a newer
 library revision deliberately, run `cargo update -p p99-logger-client` inside
 `src-tauri`, then review and commit the lockfile change. Inline links require the
 logger's additive `text_start` / `text_end` fields; `start` / `end` describe the
