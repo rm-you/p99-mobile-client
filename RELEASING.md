@@ -1,9 +1,9 @@
 # Direct Android releases
 
 Releases are APK downloads on GitHub. The workflow has no Play Store/AAB upload.
-Normal main/PR checks remain in `checks.yml`; `release.yml` runs only on a **new
-push of a `v*.*.*` tag**. Editing/deleting an existing tag does not create another
-release. A rerun retains the original event and can retry a failed run.
+Normal main/PR checks remain in `checks.yml`; automatic `release.yml` runs start
+only on a **new push of a `v*.*.*` tag**. A manual retry accepts an existing tag.
+Editing/deleting an existing tag does not create another release. A rerun retains the original event and can retry a failed run.
 
 ## One-time signing setup
 
@@ -88,6 +88,20 @@ to a new GitHub Release. It does not overwrite an existing release or its APK.
 For a failed run before publication, fix the cause and rerun where appropriate;
 for a changed build, use a new version/tag and larger versionCode. Do not move a
 published tag or replace an APK under an existing version.
+
+If the failure needs a workflow fix, merge that fix into `main`, then run the
+updated workflow against the existing source tag:
+
+```sh
+gh workflow run release.yml --ref main -f tag=v1.0.0
+```
+
+For this recovery, temporarily allow the `main` branch in the `android-release`
+environment deployment policy, then remove that branch rule after the run.
+The workflow validates that the tag already exists, matches the app version,
+and belongs to main history. Checks and packaging use the resolved tag commit;
+the workflow fix does not change the release's source tag. Existing releases
+and their assets are never overwritten.
 
 The Android project is generated on the runner. Plugin manifests/resources and
 the icon sync script are the source of native customizations; release signing is
