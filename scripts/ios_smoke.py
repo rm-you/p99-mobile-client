@@ -27,8 +27,8 @@ def main():
     bundle = info["CFBundleIdentifier"]
     if not (app / "PrivacyInfo.xcprivacy").is_file():
         raise RuntimeError("App privacy manifest was not packaged")
-    # An unsigned Simulator app launches, but lacks the identity needed by Keychain.
-    # This ad-hoc identity is only for the disposable Simulator, never a device IPA.
+    # Supply a disposable Simulator identity for Keychain metadata access.
+    # This ad-hoc identity is never applied to a device IPA.
     entitlements = output / "simulator.entitlements"
     entitlements.write_bytes(plistlib.dumps({
         "application-identifier": "P99SIMTEST." + bundle,
@@ -51,7 +51,16 @@ def main():
         simctl("bootstatus", device, "-b")
         simctl("install", device, str(app.resolve()))
         print("Launching the packaged application...", flush=True)
-        launch = simctl("launch", device, bundle)
+        # SpringBoard can briefly reject launch requests after a cold boot.
+        for attempt in range(3):
+            try:
+                launch = simctl("launch", device, bundle)
+                break
+            except subprocess.CalledProcessError:
+                if attempt == 2:
+                    raise
+                print("Simulator rejected launch; retrying after five seconds...", flush=True)
+                time.sleep(5)
         (output / "launch.txt").write_text(launch + "\n")
         time.sleep(10)
         processes = simctl("spawn", device, "launchctl", "list")
@@ -60,12 +69,21 @@ def main():
             raise RuntimeError("Application did not remain running after launch")
         simctl("io", device, "screenshot", str(output / "launch.png"))
         subprocess.run(["xcodegen", "generate", "--spec", "scripts/ios-tests/project.yml"], check=True)
-        subprocess.run([
-            "xcodebuild", "test", "-project", "scripts/ios-tests/P99Smoke.xcodeproj",
-            "-scheme", "P99Smoke", "-destination", "id=" + device,
-            "-resultBundlePath", str(output / "smoke.xcresult"),
-            "CODE_SIGNING_ALLOWED=NO",
-        ], check=True, timeout=300)
+        try:
+            subprocess.run([
+                "xcodebuild", "test", "-project", "scripts/ios-tests/P99Smoke.xcodeproj",
+                "-scheme", "P99Smoke", "-destination", "id=" + device,
+                "-resultBundlePath", str(output / "smoke.xcresult"),
+                "CODE_SIGNING_ALLOWED=NO",
+            ], check=True, timeout=300)
+        finally:
+            result = output / "smoke.xcresult"
+            if result.exists():
+                with (output / "test-summary.json").open("w") as summary:
+                    subprocess.run(["xcrun", "xcresulttool", "get", "test-results", "summary",
+                        "--path", str(result)], stdout=summary, check=False, timeout=30)
+                subprocess.run(["xcrun", "xcresulttool", "export", "attachments", "--path", str(result),
+                    "--output-path", str(output / "attachments")], check=False, timeout=30)
         (output / "build.json").write_text(json.dumps({
             "bundle": bundle, "version": info["CFBundleShortVersionString"],
             "runtime": runtime["name"], "process_alive": True,
@@ -75,9 +93,16 @@ def main():
         print("Packaged iOS app installed and remained running; no game login attempted.")
     finally:
         try:
+            # A fresh CI device has no account data; retain native launch failures too.
+            predicate = ('eventMessage CONTAINS "Secure storage" OR '
+                         'eventMessage CONTAINS "' + bundle + '" OR '
+                         'process == "SpringBoard" OR process == "runningboardd" OR '
+                         'process == "amfid"')
             log = simctl("spawn", device, "log", "show", "--last", "10m", "--style", "compact",
-                         "--predicate", 'eventMessage CONTAINS "Secure storage"')
-            (output / "secure-storage.log").write_text(log)
+                         "--predicate", predicate)
+            (output / "simulator.log").write_text(log)
+            subprocess.run(["xcrun", "simctl", "io", device, "screenshot",
+                            str(output / "last-screen.png")], check=False, timeout=30)
         finally:
             subprocess.run(["xcrun", "simctl", "shutdown", device], check=False, timeout=30)
             subprocess.run(["xcrun", "simctl", "delete", device], check=False, timeout=30)

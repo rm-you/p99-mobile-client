@@ -34,7 +34,8 @@ def verify(path, build_number=None, signed=False):
                 for entry in archive.namelist():
                     if Path(entry).is_absolute() or ".." in Path(entry).parts:
                         raise ValueError("Invalid IPA path")
-                archive.extractall(directory)
+                # Preserve executable permissions and framework symlinks for codesign.
+                subprocess.run(["ditto", "-x", "-k", str(path), directory], check=True)
                 app = str(Path(directory) / root)
                 subprocess.run(["codesign", "--verify", "--deep", "--strict", app], check=True)
                 entitlements = plistlib.loads(subprocess.check_output(
