@@ -1,7 +1,10 @@
 import { Fragment } from "react";
 import { itemText } from "./itemText";
-import { recordText } from "./protocol";
+import { recordChannel, recordText } from "./protocol";
 import type { ChatRecord, ItemLink, Message } from "./protocol";
+import { replyRecipient } from "./composer";
+import { isOwnMessage, recordKey } from "./chatTools";
+import SwipeToReply from "./SwipeToReply";
 
 function LinkedText({
   message,
@@ -48,22 +51,40 @@ function LinkedText({
 export default function MessageRow({
   record,
   onItem,
+  onReply,
+  onActions,
 }: {
   record: ChatRecord;
   onItem: (item: ItemLink) => void;
+  onReply?: (recipient: string) => void;
+  onActions?: (record: ChatRecord) => void;
 }) {
-  const channel = record.channel_name ?? "system";
-  return (
-    <article className={`message channel-${channel}`}>
+  const channel = recordChannel(record);
+  const recipient = onReply ? replyRecipient(record) : null;
+  const content = (
+    <article
+      data-message-key={recordKey(record)}
+      className={`message channel-${channel}`}
+    >
       <div className="message-meta">
         <span className="channel-name">
           {channel === "ooc" ? "OOC" : channel.replace(/_/g, " ")}
         </span>
         <strong>
-          {record.sender ||
+          {(isOwnMessage(record) ? "You" : record.sender) ||
             (record.type === "decode_error" ? "Notice" : "Norrath")}
         </strong>
         {record.target && <span className="recipient">to {record.target}</span>}
+        {onActions && (
+          <button
+            type="button"
+            className="sr-only message-access"
+            aria-label={`Actions for ${record.sender || "game"} message`}
+            onClick={() => onActions(record)}
+          >
+            Message actions
+          </button>
+        )}
         <time dateTime={record.timestamp}>
           {new Date(record.timestamp).toLocaleTimeString([], {
             hour: "2-digit",
@@ -96,5 +117,13 @@ export default function MessageRow({
         )}
       </div>
     </article>
+  );
+  return (
+    <SwipeToReply
+      onReply={recipient ? () => onReply?.(recipient) : undefined}
+      onLongPress={onActions ? () => onActions(record) : undefined}
+    >
+      {content}
+    </SwipeToReply>
   );
 }

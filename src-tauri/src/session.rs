@@ -1,9 +1,10 @@
+use crate::outgoing::ChatOutbox;
 use p99_logger_client::client::{
     CancellationToken, Client, ClientConfig, ClientEvent, ClientIdentity, LoginError, RunOptions,
 };
 use serde::{Deserialize, Serialize};
 use std::{
-    sync::Mutex,
+    sync::{Arc, Mutex},
     thread::{self, JoinHandle},
 };
 
@@ -30,6 +31,7 @@ pub struct ConnectRequest {
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum AppEvent {
     Client(ClientEvent),
+    HistoryError,
     Background(tauri_plugin_session_service::BackgroundStatus),
     Finished { error: Option<SessionFailure> },
 }
@@ -70,6 +72,7 @@ impl SessionObserver for () {
 pub struct SessionController {
     worker: Mutex<Option<Worker>>,
     cancellation: Mutex<Option<CancellationToken>>,
+    pub outbox: Arc<ChatOutbox>,
 }
 
 impl SessionController {
@@ -123,14 +126,22 @@ impl SessionController {
             .lock()
             .map_err(|_| "Session state unavailable")? = Some(cancel.clone());
         let worker_cancel = cancel.clone();
+        let inbox = self.outbox.open(cancel.clone());
         let mut observer = begin(cancel.clone());
         let worker = thread::Builder::new()
             .name("p99-session".into())
             .spawn(move || {
-                let outcome = client.run(&worker_cancel, RunOptions::default(), |event| {
-                    observer.observe(&event);
-                    send(AppEvent::Client(event)).map_err(anyhow::Error::msg)
-                });
+                let outcome = client.run_with_commands(
+                    &worker_cancel,
+                    RunOptions::default(),
+                    &inbox.receiver,
+                    |event| {
+                        inbox.observe(&event);
+                        observer.observe(&event);
+                        send(AppEvent::Client(event)).map_err(anyhow::Error::msg)
+                    },
+                );
+                drop(inbox);
                 // The network has closed before the foreground service and wake lock end.
                 drop(observer);
                 let _ = send(AppEvent::Finished {

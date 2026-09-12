@@ -43,6 +43,8 @@ export interface ChatRecord extends Partial<Message> {
   session_id: string;
   message_id: number;
   channel_name?: string;
+  /** Original numeric channel, including IDs not named by older core versions. */
+  channel?: number;
   sender?: string;
   target?: string;
   string_id?: number;
@@ -65,6 +67,7 @@ export type ClientEvent =
   | { type: "diagnostic"; data: string }
   | { type: "reconnecting"; data: { error: string; delay_seconds: number } };
 export type AppEvent =
+  | { type: "history_error" }
   | { type: "client"; data: ClientEvent }
   | {
       type: "background";
@@ -91,6 +94,13 @@ export const CHANNELS = [
   "system",
 ] as const;
 export type ChatChannel = (typeof CHANNELS)[number];
+
+/** P99 echoes sent tells on channel 14; older core versions call that unknown. */
+export function recordChannel(record: ChatRecord): string {
+  if (record.type === "chat" && record.channel === 14) return "tell";
+  return record.channel_name ?? "system";
+}
+
 export function recordText(record: ChatRecord): string {
   if (record.type === "decode_error")
     return record.error ?? "A message could not be decoded.";
@@ -111,7 +121,7 @@ export function matchesChannels(
   record: ChatRecord,
   channels: ChatChannel[],
 ): boolean {
-  const name = record.channel_name as ChatChannel;
+  const name = recordChannel(record) as ChatChannel;
   const channel =
     record.type !== "decode_error" && CHANNELS.includes(name) ? name : "system";
   return channels.includes(channel);

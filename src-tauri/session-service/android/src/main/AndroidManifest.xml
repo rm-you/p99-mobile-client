@@ -4,6 +4,13 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <application>
+        <provider android:name="io.github.rmyou.sessionservice.ChatExportProvider" android:authorities="${applicationId}.chat-exports" android:exported="false" android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/chat_export_paths" />
+        </provider>
+        <activity
+            android:name="${applicationId}.MainActivity"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/P99ChatTheme" />
         <service
             android:name="io.github.rmyou.sessionservice.ChatConnectionService"
             android:exported="false"

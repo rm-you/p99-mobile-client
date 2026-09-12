@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, FormEvent } from "react";
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
 import {
   CHANNELS,
@@ -23,8 +23,22 @@ import type { SavedProfile, VaultStatus } from "./SavedProfiles";
 import ConfirmDialog from "./ConfirmDialog";
 import ItemModal from "./ItemModal";
 import MessageRow from "./MessageRow";
+import ChatComposer from "./ChatComposer";
+import type { OutgoingMessage, ReplySelection } from "./composer";
 import { connectionDisplay } from "./connection";
 import { zoneName } from "./zones";
+import Preferences from "./Preferences";
+import MessageActions from "./MessageActions";
+import { defaultExperience } from "./experience";
+import type { Experience, HistoryOwner } from "./experience";
+import { applyEcho, recordKey } from "./chatTools";
+import type { Submission } from "./chatTools";
+import useUnread from "./useUnread";
+interface TimelineEntry {
+  id: number;
+  at: number;
+  text: string;
+}
 
 const initialSettings: ConnectRequest = {
   user: "",
@@ -37,6 +51,7 @@ interface SavedSettings {
   server: ConnectRequest["server"];
   channels: ChatChannel[];
   follow: boolean;
+  experience?: Experience;
 }
 const channelLabel = (name: string) =>
   name === "ooc" ? "OOC" : name.replace(/_/g, " ");
@@ -62,7 +77,9 @@ export default function App() {
   const [vaultBusy, setVaultBusy] = useState(false);
   const vaultBusyRef = useRef(false);
   const saveQueue = useRef(Promise.resolve());
-  const [tab, setTab] = useState<"chat" | "settings">("settings");
+  const [tab, setTab] = useState<"chat" | "settings" | "preferences">(
+    "settings",
+  );
   const [selectedItem, setSelectedItem] = useState<ItemLink | null>(null);
   const [records, setRecords] = useState<ChatRecord[]>([]);
   const [channels, setChannels] = useState<ChatChannel[]>([...CHANNELS]);
@@ -77,10 +94,148 @@ export default function App() {
   const [now, setNow] = useState(Date.now);
   const [follow, setFollow] = useState(true);
   const [query, setQuery] = useState("");
+  const [reply, setReply] = useState<ReplySelection | null>(null);
   const generation = useRef(0);
   const activeRef = useRef(false);
   const list = useRef<HTMLDivElement>(null);
   const native = isTauri();
+  const [experience, setExperience] = useState<Experience>(defaultExperience);
+  const [selectedMessage, setSelectedMessage] = useState<ChatRecord | null>(
+    null,
+  );
+  const [foreground, setForeground] = useState(
+    document.visibilityState === "visible",
+  );
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const submissionId = useRef(0);
+  const lastMessage = useRef(0);
+  const lastSession = useRef("");
+  const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
+  const timelineId = useRef(0);
+  const lostConnection = useRef(false);
+  const experienceRef = useRef(experience);
+  experienceRef.current = experience;
+  const muted = (record: ChatRecord) =>
+    experience.muted_authors.some(
+      (name) => name.toLowerCase() === record.sender?.toLowerCase(),
+    );
+  const visible = useMemo(
+    () =>
+      records.filter(
+        (record) =>
+          !experience.muted_authors.some(
+            (name) => name.toLowerCase() === record.sender?.toLowerCase(),
+          ) &&
+          matchesChannels(record, channels) &&
+          `${record.sender ?? ""} ${recordText(record)}`
+            .toLocaleLowerCase()
+            .includes(query.toLocaleLowerCase()),
+      ),
+    [records, channels, query, experience.muted_authors],
+  );
+  const unmutedRecords = useMemo(
+    () =>
+      records.filter(
+        (record) =>
+          !experience.muted_authors.some(
+            (name) => name.toLowerCase() === record.sender?.toLowerCase(),
+          ),
+      ),
+    [records, experience.muted_authors],
+  );
+  const unread = useUnread(
+    unmutedRecords,
+    visible,
+    foreground && tab === "chat" && follow,
+  );
+  const addUnread = unread.add;
+  const reading = useRef(false);
+  const displayed = useRef<(record: ChatRecord) => boolean>(() => true);
+  displayed.current = (record) =>
+    matchesChannels(record, channels) &&
+    `${record.sender ?? ""} ${recordText(record)}`
+      .toLocaleLowerCase()
+      .includes(query.toLocaleLowerCase());
+  reading.current = foreground && tab === "chat" && follow;
+  function addMarker(text: string) {
+    const entry = { id: ++timelineId.current, at: Date.now(), text };
+    setTimeline((previous) => [...previous.slice(-99), entry]);
+  }
+  function chooseReply(recipient: string) {
+    setReply((previous) => ({
+      recipient,
+      sequence: (previous?.sequence ?? 0) + 1,
+    }));
+  }
+  function clearView() {
+    setRecords([]);
+    setTimeline([]);
+    unread.reset();
+  }
+  async function viewHistory(owner: HistoryOwner) {
+    if (activeRef.current) return;
+    const id = ++generation.current;
+    const loaded = await invoke<ChatRecord[]>("load_history", {
+      owner: { server: owner.server, character: owner.character },
+    });
+    if (id !== generation.current || activeRef.current) return;
+    setSessionIdentity({ server: owner.server, character: owner.character });
+    setRecords(loaded);
+    unread.reset();
+    setTimeline([]);
+    setSubmissions([]);
+    setStatus(null);
+    setReply(null);
+    setFollow(true);
+    setTab("chat");
+  }
+  useEffect(() => {
+    const update = () => setForeground(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", update);
+    return () => document.removeEventListener("visibilitychange", update);
+  }, []);
+  useEffect(() => {
+    const pending = submissions.filter((s) => s.state === "submitted");
+    if (!pending.length) return;
+    const wait = Math.max(
+      1,
+      Math.min(...pending.map((s) => s.at + 15000)) - Date.now(),
+    );
+    const timer = setTimeout(
+      () =>
+        setSubmissions((previous) =>
+          previous.map((s) =>
+            s.state === "submitted" && Date.now() - s.at >= 15000
+              ? { ...s, state: "unconfirmed" }
+              : s,
+          ),
+        ),
+      wait,
+    );
+    return () => clearTimeout(timer);
+  }, [submissions]);
+  useEffect(() => {
+    if (
+      !foreground ||
+      tab !== "chat" ||
+      !list.current ||
+      typeof IntersectionObserver === "undefined"
+    )
+      return;
+    const observer = new IntersectionObserver(
+      (entries) =>
+        unread.read(
+          entries
+            .filter((e) => e.isIntersecting)
+            .map((e) => (e.target as HTMLElement).dataset.messageKey!),
+        ),
+      { root: list.current, threshold: 0.5 },
+    );
+    list.current
+      .querySelectorAll("[data-message-key]")
+      .forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [foreground, tab, visible, unread.read]);
 
   useEffect(() => {
     if (!native) return;
@@ -90,6 +245,8 @@ export default function App() {
       }).catch(() => {});
     };
     document.addEventListener("visibilitychange", visibility);
+    // A WebView reload can leave native delivery paused without a new resume event.
+    visibility();
     return () => document.removeEventListener("visibilitychange", visibility);
   }, [native]);
 
@@ -123,6 +280,7 @@ export default function App() {
         }));
         setChannels(value.channels);
         setFollow(value.follow);
+        setExperience({ ...defaultExperience, ...value.experience });
         setPersist(true);
       } else
         setError(
@@ -151,6 +309,7 @@ export default function App() {
         server: settings.server,
         channels,
         follow,
+        experience,
       };
       saveQueue.current = saveQueue.current
         .then(() => invoke<void>("save_settings", { settings: preferences }))
@@ -161,7 +320,7 @@ export default function App() {
         });
     }, 250);
     return () => clearTimeout(timer);
-  }, [native, ready, persist, settings.server, channels, follow]);
+  }, [native, ready, persist, settings.server, channels, follow, experience]);
 
   function editProfile(profile: SavedProfile | "legacy" | null) {
     setEditing(profile);
@@ -271,14 +430,6 @@ export default function App() {
     }
   }
 
-  const visible = records.filter(
-    (record) =>
-      matchesChannels(record, channels) &&
-      `${record.sender ?? ""} ${recordText(record)}`
-        .toLocaleLowerCase()
-        .includes(query.toLocaleLowerCase()),
-  );
-
   async function disconnect() {
     if (!native || !activeRef.current) return;
     setStopping(true);
@@ -287,6 +438,9 @@ export default function App() {
       await invoke("disconnect");
       activeRef.current = false;
       setActive(false);
+      addMarker(
+        "Disconnected. Messages received while offline are unavailable.",
+      );
       setStatus((previous) =>
         previous ? { ...previous, state: "stopped" } : null,
       );
@@ -317,6 +471,12 @@ export default function App() {
       character: settings.character.trim(),
     };
     const id = ++generation.current;
+    setReply(null);
+    unread.reset();
+    setTimeline([]);
+    setSubmissions([]);
+    lastMessage.current = 0;
+    lostConnection.current = false;
     setBackgroundNotice("");
     setError("");
     setRetrying(false);
@@ -335,6 +495,12 @@ export default function App() {
     const onEvent = new Channel<AppEvent>();
     onEvent.onmessage = (event) => {
       if (id !== generation.current) return;
+      if (event.type === "history_error") {
+        setError(
+          "Chat history could not be saved. Live chat is still available.",
+        );
+        return;
+      }
       if (event.type === "background") {
         setBackgroundNotice(
           !event.data.supported
@@ -348,6 +514,14 @@ export default function App() {
         return;
       }
       if (event.type === "finished") {
+        addMarker("Connection ended. There may be a gap in messages.");
+        setSubmissions((previous) =>
+          previous.map((s) =>
+            s.state === "submitting" || s.state === "submitted"
+              ? { ...s, state: "unconfirmed" }
+              : s,
+          ),
+        );
         setBackgroundNotice("");
         setPendingLogin(null);
         activeRef.current = false;
@@ -369,6 +543,16 @@ export default function App() {
       const message = event.data;
       switch (message.type) {
         case "status":
+          if (message.data.session_id !== lastSession.current) {
+            lastSession.current = message.data.session_id;
+            lastMessage.current = 0;
+          }
+          if (message.data.state === "connected" && lostConnection.current) {
+            addMarker(
+              "Reconnected. Messages during the interruption may be missing.",
+            );
+            lostConnection.current = false;
+          }
           if (message.data.state === "connecting") setStage("connecting_login");
           setStatus(message.data);
           setNow(Date.now());
@@ -379,6 +563,16 @@ export default function App() {
           break;
         case "record":
           if (isEmptyGuildMotd(message.data)) break;
+          lastMessage.current = message.data.message_id;
+          setSubmissions((previous) => applyEcho(previous, message.data));
+          if (
+            (!reading.current || !displayed.current(message.data)) &&
+            !experienceRef.current.muted_authors.some(
+              (name) =>
+                name.toLowerCase() === message.data.sender?.toLowerCase(),
+            )
+          )
+            addUnread(message.data);
           setRecords((previous) => [
             ...previous.slice(-(MAX_RECORDS - 1)),
             message.data,
@@ -388,11 +582,31 @@ export default function App() {
           // Transport details are not user-facing connection progress.
           break;
         case "reconnecting":
+          if (!lostConnection.current)
+            addMarker(
+              "Connection interrupted. Reconnecting; messages may be missing.",
+            );
+          lostConnection.current = true;
           setRetrying(true);
           break;
       }
     };
     try {
+      if (experience.history_enabled) {
+        try {
+          const owner = {
+            server: profile?.server ?? request.server,
+            character: profile?.character ?? request.character,
+          };
+          const history = await invoke<ChatRecord[]>("load_history", { owner });
+          if (id === generation.current) setRecords(history);
+        } catch {
+          setError(
+            "Saved history could not be loaded. Connecting to live chat.",
+          );
+        }
+      }
+      if (id !== generation.current || !activeRef.current) return;
       if (profile) {
         const saved = await invoke<SavedProfile>("connect_saved", {
           id: profile.id,
@@ -437,8 +651,44 @@ export default function App() {
     now,
     stage,
   );
+  const canSend =
+    native && active && !stopping && !retrying && connection.healthy;
+  async function sendChat(message: OutgoingMessage) {
+    if (!canSend || !status?.session_id) throw "not_connected";
+    const id = ++submissionId.current;
+    const session = status.session_id;
+    setSubmissions((previous) => [
+      ...previous.slice(-4),
+      {
+        id,
+        message,
+        session,
+        afterMessageId: lastMessage.current,
+        state: "submitting",
+        at: Date.now(),
+      },
+    ]);
+    try {
+      await invoke("send_chat", { request: { session_id: session, message } });
+      setSubmissions((previous) =>
+        previous.map((s) =>
+          s.id === id && s.state === "submitting"
+            ? { ...s, state: "submitted" }
+            : s,
+        ),
+      );
+    } catch (failure) {
+      setSubmissions((previous) =>
+        previous.map((s) => (s.id === id ? { ...s, state: "failed" } : s)),
+      );
+      throw failure;
+    }
+  }
   return (
-    <main className="app-shell">
+    <main
+      className={`app-shell${experience.compact ? " compact" : ""}${experience.high_contrast ? " high-contrast" : ""}`}
+      style={{ "--chat-size": `${experience.text_size}px` } as CSSProperties}
+    >
       <header className="app-header">
         <div className="header-title">
           <h1>P99 Mobile Chat</h1>
@@ -483,7 +733,7 @@ export default function App() {
           />
           <form onSubmit={submitConnection}>
             <h2 className="manual-heading">
-              {editing ? "Edit saved character" : "Manual connection"}
+              {editing ? "Edit saved character" : "New connection"}
             </h2>
             <fieldset disabled={active || stopping || vaultBusy || !ready}>
               <label>
@@ -624,6 +874,14 @@ export default function App() {
             phone may pause connections in the background.
           </p>
         </section>
+      ) : tab === "preferences" ? (
+        <Preferences
+          value={experience}
+          onChange={setExperience}
+          active={active}
+          onHistory={viewHistory}
+          onClear={clearView}
+        />
       ) : (
         <section className="chat-view" aria-label="Chat">
           <details
@@ -686,10 +944,22 @@ export default function App() {
           </details>
           <div className="chat-toolbar">
             <span>{records.length.toLocaleString()} messages</span>
+            {unread.tells > 0 && (
+              <button
+                className="text-button unread-tells"
+                onClick={() => {
+                  setChannels(["tell"]);
+                  setQuery("");
+                  setFollow(true);
+                }}
+              >
+                {unread.tells} unread {unread.tells === 1 ? "tell" : "tells"}
+              </button>
+            )}
             <button
               className="text-button"
               type="button"
-              onClick={() => setRecords([])}
+              onClick={clearView}
               disabled={!records.length}
             >
               Clear
@@ -709,14 +979,50 @@ export default function App() {
               );
             }}
           >
-            {visible.length ? (
-              visible.map((record) => (
-                <MessageRow
-                  key={`${record.session_id}-${record.message_id}`}
-                  record={record}
-                  onItem={setSelectedItem}
-                />
-              ))
+            {visible.length || timeline.length ? (
+              [
+                ...visible.map((record) => ({
+                  at: new Date(record.timestamp).getTime(),
+                  record,
+                  marker: null as TimelineEntry | null,
+                })),
+                ...timeline.map((marker) => ({
+                  at: marker.at,
+                  record: null as ChatRecord | null,
+                  marker,
+                })),
+              ]
+                .sort((a, b) => a.at - b.at)
+                .map((entry) =>
+                  entry.record ? (
+                    <Fragment key={recordKey(entry.record)}>
+                      {unread.boundary === recordKey(entry.record) && (
+                        <div className="timeline-marker unread-divider">
+                          New messages
+                        </div>
+                      )}
+                      <MessageRow
+                        record={entry.record}
+                        onItem={setSelectedItem}
+                        onReply={chooseReply}
+                        onActions={setSelectedMessage}
+                      />
+                    </Fragment>
+                  ) : (
+                    <div
+                      className="timeline-marker"
+                      key={`timeline-${entry.marker!.id}`}
+                    >
+                      <time>
+                        {new Date(entry.at).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </time>{" "}
+                      {entry.marker!.text}
+                    </div>
+                  ),
+                )
             ) : (
               <div className="empty-state">
                 <h3>
@@ -750,11 +1056,41 @@ export default function App() {
           </div>
           {!follow && visible.length > 0 && (
             <button className="latest-button" onClick={() => setFollow(true)}>
-              Latest messages
+              {unread.count
+                ? `${unread.count} new ${unread.count === 1 ? "message" : "messages"}`
+                : "Latest messages"}
             </button>
           )}
         </section>
       )}
+      {tab === "chat" && submissions.length > 0 && (
+        <div className="submission-status" role="status">
+          {submissions.slice(-1).map((s) => (
+            <span key={s.id} className={s.state === "failed" ? "failed" : ""}>
+              {s.message.channel === "tell"
+                ? `Tell → ${s.message.recipient}`
+                : channelLabel(s.message.channel)}{" "}
+              ·{" "}
+              {
+                {
+                  submitting: "Submitting…",
+                  submitted: "Submitted",
+                  echoed: "Server echo received",
+                  unconfirmed: "Submitted · no echo received",
+                  failed: "Failed · draft kept",
+                }[s.state]
+              }
+            </span>
+          ))}
+        </div>
+      )}
+      <ChatComposer
+        key={generation.current}
+        hidden={tab !== "chat"}
+        connected={canSend}
+        reply={reply}
+        onSend={sendChat}
+      />
       {(active || status) && (
         <div
           className={`chat-footer ${connection.busy ? "connection-progress" : ""}`}
@@ -849,13 +1185,41 @@ export default function App() {
       {selectedItem && (
         <ItemModal item={selectedItem} onClose={() => setSelectedItem(null)} />
       )}
+      {selectedMessage && (
+        <MessageActions
+          record={selectedMessage}
+          muted={muted(selectedMessage)}
+          onReply={chooseReply}
+          onMute={(name) =>
+            setExperience((previous) => ({
+              ...previous,
+              muted_authors: previous.muted_authors.some(
+                (n) => n.toLowerCase() === name.toLowerCase(),
+              )
+                ? previous.muted_authors.filter(
+                    (n) => n.toLowerCase() !== name.toLowerCase(),
+                  )
+                : [...previous.muted_authors.slice(-199), name],
+            }))
+          }
+          onClose={() => setSelectedMessage(null)}
+        />
+      )}
       <nav className="bottom-nav" aria-label="Main navigation">
         <button
           className={tab === "chat" ? "selected" : ""}
           aria-current={tab === "chat" ? "page" : undefined}
           onClick={() => setTab("chat")}
         >
-          Chat
+          Chat{" "}
+          {unread.count > 0 && (
+            <span
+              className="unread-badge"
+              aria-label={`${unread.count} unread messages`}
+            >
+              {unread.count > 99 ? "99+" : unread.count}
+            </span>
+          )}
         </button>
         <button
           className={tab === "settings" ? "selected" : ""}
@@ -863,6 +1227,13 @@ export default function App() {
           onClick={() => setTab("settings")}
         >
           Connection
+        </button>
+        <button
+          className={tab === "preferences" ? "selected" : ""}
+          aria-current={tab === "preferences" ? "page" : undefined}
+          onClick={() => setTab("preferences")}
+        >
+          Settings
         </button>
       </nav>
     </main>

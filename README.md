@@ -1,9 +1,20 @@
 # P99 Mobile Chat
 
-An early native Android/iOS chat viewer built with Tauri 2, React, and the
+A native Android chat app built with Tauri 2, React, and the
 [reusable Rust P99 client](https://github.com/rm-you/p99-logger-client).
 The phone connects directly to the login, world, and zone servers; no relay
 service or graphical EverQuest client is required.
+
+Download the ARM64 APK from [GitHub Releases](https://github.com/rm-you/p99-mobile-client/releases).
+See [installation and updates](INSTALLING.md), including the one-time migration
+from development-signed APKs. Distribution is direct; no Play Store account is
+needed. The repository also includes iOS source, which requires separate platform
+validation and is not part of the Android release.
+
+[Privacy](PRIVACY.md) · [Changes](CHANGELOG.md) · [Release process](RELEASING.md)
+
+The app's own code is [MIT licensed](LICENSE). Dependencies and the bundled item
+snapshot retain their original terms; see [component and data notices](DEPENDENCIES.md).
 
 ## Using the app
 
@@ -29,18 +40,35 @@ reference item ID; missing or conflicting entries show an unavailable message.
 **View on P99 Wiki** opens the item page in your browser only when tapped.
 The catalog contains community reference data and can have gaps; see its
 [source and update notes](src-tauri/data/README.md). Item link IDs and original
-link bodies remain available in the received records. Clearing the view removes
-its retained messages.
+link bodies remain available in the received records. Clearing the view removes its in-memory messages; saved history is cleared separately in Settings.
+
+Choose Say, Tell, Guild, Auction, OOC, or Shout in the composer to send a message.
+The text box starts at one line and grows to four before scrolling. Tap the
+paper-plane icon to send; Enter adds a line, and Ctrl/Cmd+Enter also submits.
+Line breaks become spaces in one game message. For tells, enter a character name
+or swipe any message with an identified author left or right to select that author.
+Replies always use Tell, regardless of
+the original channel. Sent-tell echoes display and filter as Tell as well.
+On Android, the chat view resizes above the on-screen keyboard so the message
+field and send button remain visible while typing.
+
+Sending is enabled only while the current character is connected. Drafts survive
+tab changes and failed submissions, but are cleared when starting a new login.
+They are held only in memory. Pending commands are discarded when the connection
+ends, so reconnecting cannot unexpectedly replay unsent chat. Submission means
+the local network queue accepted the message; the app displays server messages
+without adding a synthetic delivered echo. Group, Raid, emotes, and slash-command
+parsing are not offered by the composer.
 
 Server, selected channels, and follow-latest preferences save on this
 device. After a manual connection starts, the app asks whether to save the
 character, server, account, and password together. Choose **Save** or
-**Not now**; either choice leaves the connection running. Saved characters appear above the manual connection form;
+**Not now**; either choice leaves the connection running. Saved characters appear above the **New connection** form;
 tap a character/server entry to unlock it with device authentication and connect.
 The account and password pass directly to the Rust worker and are never filled
 back into the webview. Each saved character has independent protected storage.
 Character/server labels are visible while credentials remain locked. The manual
-character field starts blank; character names are retained only in saved profiles.
+character field starts blank; the manual form never restores a previous character name. Optional chat history is also organized by character and server.
 
 Use the pencil to edit a saved character. Leave both account and password blank
 to keep its existing login, or enter both to replace it. Keeping the login during
@@ -69,8 +97,7 @@ remain in the active worker's memory for retries without repeated unlock prompts
 If the login server rejects the account/password pair, retries stop and the app
 asks you to check the login details. Other connection failures retain automatic
 retries. **Disconnect** asks for confirmation, then stops that worker before another
-session can start. Chat stays in memory; chat export and message sending are not
-implemented.
+session can start.
 
 Background connections are best effort. Switching apps, locking the screen, or
 losing window focus does not deliberately disconnect the session or cancel a
@@ -102,9 +129,72 @@ and [iOS background execution documentation](https://developer.apple.com/documen
 See the [roadmap](ROADMAP.md) for platform validation, chat UI improvements, and
 background connection work.
 
+## Reading, history, and alerts
+
+The Settings tab contains text sizes from 12–22, compact spacing (on by default), and an optional
+higher-contrast palette. Classic EQ colors remain the default. Item details use
+a bottom sheet on phones and a centered dialog on larger screens. Android system
+bars use light icons on a dark background; layout respects the keyboard and safe areas.
+
+Unread incoming messages appear in the Chat badge, with a separate shortcut for
+unread tells. Scrolling away from the bottom stops automatic following; **Latest
+messages** shows a count when new messages arrive. A divider marks the new-message
+boundary. Filters do not mark hidden messages read. Unread counts are session-only
+and are not restored with saved history.
+
+Swipe an authored message in either direction to compose a tell. Long-press it
+to copy, share, reply, or mute the author. Tapping outside the popup dismisses it.
+Screen readers can use the message action control; keyboard focus reveals that
+control without adding buttons to every visible row. Muted messages are hidden
+and cannot trigger alerts, but are still kept in enabled history. Unmute authors
+in Settings. Your own messages are labeled **You**, and the composer identifies a
+tell's recipient explicitly.
+
+Send feedback distinguishes **Submitting**, **Submitted**, **Server echo received**,
+and failure. An echo is evidence of a server response, not a read receipt. After
+15 seconds without a matching echo, the status says **Submitted · no echo received**;
+this does not imply that sending failed. Failed submissions retain the draft.
+Connection interruptions and resumptions insert timeline notices about possible
+message gaps. These UI markers are separate from the game's chat records.
+
+**Save chat on this device** is off by default. When enabled, Rust writes structured
+chat to a separate SQLite database before buffering it for the UI, including while
+Android's WebView is hidden. Choose 1, 7, or 30 days and 1,000, 5,000, or 10,000 messages
+per character/server; an additional 20,000-message device limit applies. Retention
+is enforced when the store is used, not by waking an inactive app. Turning saving
+off stops new writes without deleting existing history. **Clear saved history**
+removes it for every character after confirmation. Live chat continues if storage fails.
+
+History contains player names and message content; it is not protected by the
+credential vault's biometric lock. Credentials never enter the history database.
+Saved history can be viewed while disconnected and loads before a new login when
+saving is enabled. The chat view keeps the latest 1,500 records; exports include
+all retained records for the selected character. Text export is readable; JSONL
+preserves original item-link bodies, IDs, decoded ranges, and formatted-message
+arguments. Both use the Android/iOS share sheet. Exports are capped at 20 MB;
+reduce retention if that limit is reached. Shared copies are outside the app's
+history retention controls.
+
+Optional Android alerts cover incoming tells, guild messages, or up to 20
+comma-separated keywords. They run only while the app is backgrounded and the
+native session receives a matching message. Muted authors and your own messages
+are excluded; alerts are rate-limited to one every two seconds. Previews are off
+by default. Lock-screen public notices omit sender and text. Android notification
+permissions, channel settings, and device policy still control presentation.
+Use **Test notification** while disconnected to check permission and presentation
+without starting a game session.
+These are local notifications, not push delivery: they cannot receive messages
+after Android kills or suspends networking. The Notifications section appears only on supported platforms.
+
+About includes the version, build identifier, networking revision, source and issue
+links, [component notices](DEPENDENCIES.md), and data credits. **Export diagnostics**
+uses an explicit allowlist of versions, platform, counters, and storage status.
+It excludes credentials, character names, chat text, keywords, raw packets, and
+local file paths. Sharing chat and sharing diagnostics are separate actions.
+
 ## Development
 
-Install Node.js 24, Rust stable, and the
+Install Node.js 24, the Rust toolchain pinned in `rust-toolchain.toml`, and the
 [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/), then:
 
 ```sh
@@ -139,22 +229,35 @@ npm run tauri -- ios dev
 npm run tauri -- ios build
 ```
 
-Platform project generation, device signing, and store distribution are separate
-from this initial source implementation. Do not commit signing keys or local
-credential files.
+Production Android signing and tag-triggered GitHub distribution are described in
+[RELEASING.md](RELEASING.md). Do not commit signing keys or local credential files.
 
 ## Architecture and checks
+
+The app's gold P99 speech-bubble icon is shared across platforms. Source artwork,
+the generation prompt, and regeneration instructions are in
+[`src-tauri/icons/source/`](src-tauri/icons/source/README.md). Run
+`npm run icons:generate` after changing the artwork. Normal Tauri development and
+build commands sync the committed icons into initialized Android/iOS projects.
 
 - `src/`: configuration screen, channel filters, bounded chat history, and typed
   events received over a Tauri IPC channel.
 - `src-tauri/src/session.rs`: one cancellable network worker, configuration
   validation, and serial session shutdown.
+- `src-tauri/src/outgoing.rs`: typed chat requests, input validation, and a bounded
+  command queue scoped to the current connected session.
+- `src/ChatComposer.tsx` and `src/SwipeToReply.tsx`: expandable composition and tell
+  reply gestures, with recipient selection and failed-draft retention.
 - `src-tauri/src/lib.rs`: native commands and application lifecycle callbacks.
 - `src-tauri/src/background.rs` and `delivery.rs`: session lifetime and bounded
   event delivery while the webview is hidden.
 - `src-tauri/session-service/`: Android foreground service, private connection
-  notification, and native Stop control; no-op platform support on iOS/desktop.
-- `src-tauri/src/settings.rs`: validated, atomic writes of nonsecret preferences.
+  notification, and native Stop control; Android/iOS copy and share controls.
+  Background-service methods remain no-ops on iOS/desktop.
+- `src-tauri/src/settings.rs` and `experience.rs`: validated, atomic writes of nonsecret preferences.
+- `src-tauri/src/history.rs`: opt-in SQLite retention and native alert matching.
+- `src-tauri/src/support.rs`: bounded history exports, sharing, and sanitized diagnostics.
+- `src/Preferences.tsx`, `MessageActions.tsx`, and `useUnread.ts`: appearance, history, alerts, message actions, and unread state.
 - `src-tauri/src/items.rs`: offline item lookup and safe Wiki browser URLs.
 - `src-tauri/src/items/`: indexed SQLite lookup and formatting of classic item stats.
 - `src-tauri/data/`: original SQLite snapshot, source metadata, and update instructions.

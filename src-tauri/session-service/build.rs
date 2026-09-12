@@ -1,6 +1,7 @@
 fn main() {
-    // Android support only; iOS and desktop use the Rust no-op implementation.
+    // iOS supplies sharing utilities; the connection service remains Android-only.
     tauri_plugin::Builder::new(&[])
         .android_path("android")
+        .ios_path("ios")
         .build();
 }

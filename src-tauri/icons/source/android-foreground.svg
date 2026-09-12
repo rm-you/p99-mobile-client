@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Keep the original artwork inside Android's adaptive-icon safe area. -->
+  <image x="164" y="164" width="696" height="696" xlink:href="app-icon.png"/>
+</svg>

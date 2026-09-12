@@ -13,6 +13,11 @@ config.json
 *.keystore
 *.jks
 *.p12
+*.pfx
+keystore.properties
+*password*.txt
+release-output/
+__pycache__/
 *.mobileprovision
 .DS_Store
 src-tauri/secure-login/target/

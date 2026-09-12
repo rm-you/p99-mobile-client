@@ -78,6 +78,9 @@ struct DeliveryState {
 pub struct EventDelivery(Mutex<DeliveryState>);
 
 impl EventDelivery {
+    pub fn is_hidden(&self) -> bool {
+        self.0.lock().map(|s| s.hidden).unwrap_or(true)
+    }
     /// Replace the UI subscription only after the previous network worker has finished.
     pub fn attach(&self, channel: Channel<AppEvent>) {
         if let Ok(mut state) = self.0.lock() {

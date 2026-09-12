@@ -8,6 +8,12 @@ Thanks to Wermhat and the Project 1999 Wiki contributors for compiling this data
 The source URL, checksum, dates, and entry count are recorded in `source.json`.
 No Planner application code, artwork, or Wiki article prose is bundled.
 
+The application MIT license does not apply to this snapshot. The publisher's
+[About/legal notes](https://p99planner.com/about/) describe the project as free and
+open source and retain game-content ownership, but do not specify a database
+redistribution license. That permission/terms check remains part of the first
+broad release review; this provenance record does not assert a license grant.
+
 The [Planner's source notes](https://p99planner.com/about) describe Wiki-derived
 data with some fields backfilled from legacy EQEmu/PEQ. Its metadata identifies
 a March 21, 2023 Wiki snapshot, updated by the Planner through September 7, 2026.

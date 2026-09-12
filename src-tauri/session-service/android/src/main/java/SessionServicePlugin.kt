@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.PowerManager
+import android.webkit.WebView
 import app.tauri.PermissionState
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
@@ -59,6 +60,26 @@ internal object SessionRuntime {
 /** Lifecycle and permission bridge; the service never owns account credentials. */
 @TauriPlugin(permissions = [Permission(strings = [Manifest.permission.POST_NOTIFICATIONS], alias = "notifications")])
 class SessionServicePlugin(private val activity: Activity) : Plugin(activity) {
+    override fun load(webView: WebView) {
+        installChatKeyboardInsets(activity)
+        ChatUtilities.appearance(activity)
+    }
+
+    @Command
+    fun testAlert(invoke: Invoke) {
+        activity.runOnUiThread {
+            if (Build.VERSION.SDK_INT >= 33 && getPermissionState("notifications") != PermissionState.GRANTED) {
+                requestPermissionForAlias("notifications", invoke, "testNotificationReady")
+            } else ChatUtilities.alert(activity, invoke)
+        }
+    }
+
+    @PermissionCallback
+    fun testNotificationReady(invoke: Invoke) {
+        if (getPermissionState("notifications") == PermissionState.GRANTED) ChatUtilities.alert(activity, invoke)
+        else invoke.reject("Notifications are disabled.")
+    }
+
     @Command
     fun begin(invoke: Invoke) {
         activity.runOnUiThread {
@@ -117,6 +138,13 @@ class SessionServicePlugin(private val activity: Activity) : Plugin(activity) {
         }
     }
 
+    @Command
+    fun copyText(invoke: Invoke) { activity.runOnUiThread { ChatUtilities.copy(activity,invoke) } }
+    @Command
+    fun shareDocument(invoke: Invoke) { activity.runOnUiThread { ChatUtilities.share(activity,invoke) } }
+    @Command
+    fun alertChat(invoke: Invoke) { activity.runOnUiThread { ChatUtilities.alert(activity,invoke) } }
+
     override fun onPause() { SessionRuntime.visibility(false) }
-    override fun onResume() { SessionRuntime.visibility(true) }
+    override fun onResume() { ChatUtilities.appearance(activity); SessionRuntime.visibility(true) }
 }

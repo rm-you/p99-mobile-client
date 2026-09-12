@@ -1,10 +1,17 @@
 # Background chat sessions
 
-This Android-only plugin keeps an explicitly started chat session running with
+The Android service in this plugin keeps an explicitly started chat session running with
 an ongoing notification. The Rust client still owns the UDP sockets, credentials,
 and retry loop. Only a random session ID and generic connection state reach the
-Android service. Notifications contain no character names, account details, or
-chat text.
+Android service. The ongoing connection notification contains no character names, account details, or
+chat text. Separate opt-in chat alerts can include a sender and preview.
+
+The Android plugin also initializes keyboard insets when the WebView loads.
+The activity uses `adjustResize`; the native content container consumes the
+keyboard's bottom inset so the composer stays above it in the edge-to-edge
+layout. System-bar insets remain available to the WebView's CSS safe areas.
+This layout setup runs while logged out too and does not start the service or
+acquire a wake lock. It adds no native iOS behavior.
 
 ## Lifecycle
 
@@ -46,8 +53,8 @@ live game connection uses more battery than push messaging. See
 [Doze and App Standby](https://developer.android.com/training/monitoring-device-state/doze-standby).
 
 iOS has no general-purpose equivalent for an indefinitely running chat socket.
-This plugin registers no iOS native code; its Rust methods are no-ops on iOS and
-desktop. The existing iOS best-effort connection and retry behavior remain, with
+Background-service methods are no-ops on iOS and desktop. A separate iOS native
+implementation provides clipboard and share-sheet operations only. The existing iOS best-effort connection and retry behavior remain, with
 bounded retention during webview suspension. iOS can suspend the whole process,
 so packets cannot be collected continuously after that point. Background tasks
 and silent notifications do not provide an always-on socket. Reliable delivery
@@ -73,3 +80,27 @@ restore it with `adb shell dumpsys deviceidle unforce` and
 `adb shell dumpsys battery reset`. Verify recovery instead of assuming the service
 bypasses idle restrictions. Physical-device battery behavior and an iOS/Xcode
 build require separate validation.
+
+For keyboard layout, check the actual device display with the soft keyboard
+visible, including a multiline draft and a tell recipient. The composer must
+remain above the keyboard; dismissing and reopening it must restore the original
+viewport without accumulating padding. A WebView-only screenshot can hide an
+overlap with the native keyboard and is not sufficient for this check.
+
+## Chat utilities
+
+Android applies a dark activity theme and light status/navigation icons. Both
+mobile platforms expose bounded copy/share operations. Android exports only files
+under the dedicated `shared-chat` cache directory through a non-exported
+FileProvider with temporary URI grants; iOS presents a UIActivityViewController.
+No arbitrary path or credential-reading command is exposed. Exports use unique temporary
+cache files, with at most ten retained. Files older than a day are removed at the
+next export; the OS can also clear its cache. Externally shared copies
+are not affected by clearing chat history.
+
+Rust evaluates optional incoming-tell, guild, and keyword alerts before WebView
+buffering. Android posts them on the separate **Chat messages** notification
+channel, with a generic lock-screen public version. Alert generation does not
+start a service, wake up a disconnected client, or reconnect a character. Only an
+explicit login starts the existing foreground service. iOS does not implement
+chat alerts in this version.
