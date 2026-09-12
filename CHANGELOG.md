@@ -1,4 +1,24 @@
-# P99 Mobile Chat 1.0.0
+# Changelog
+
+## P99 Mobile Chat 1.1.0
+
+- Show pending/sent indicators on each outgoing message, combine self-tell
+  receipt/confirmation pairs, and remove swipe/reply from your own messages.
+
+- Reduce Android credential-retaining edits to one device unlock while keeping
+  per-use protection and support for previously saved profiles.
+
+- Add Project Quarm to manual connections, protected saved characters, and
+  per-server chat history, using the shared crate's TAKP/EQMac protocol.
+- Apply each server's outbound chat limits and label Quarm item details as P99
+  reference data.
+- Update the networking dependency with Quarm zone-port handling and DLL version
+  announcements. Live Quarm login, chat, and the removal of the outdated-client
+  warning have been confirmed.
+- Preserve release SDK setup fixes and support manually retrying an existing
+  release tag without moving it or replacing published assets.
+
+## P99 Mobile Chat 1.0.0
 
 - Direct P99 Green/Blue login with selectable saved characters and authenticated
   Android credential storage.

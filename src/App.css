@@ -876,15 +876,31 @@ input::placeholder {
   color: #dc92dc;
   margin-left: auto;
 }
-.submission-status {
-  flex-shrink: 0;
-  padding: 5px 14px 0;
-  color: #a6b0be;
-  font-size: 11px;
+.message-body {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
 }
-.submission-status .failed {
-  color: #f0a4a4;
+.message-body .message-text {
+  flex: 1;
+  min-width: 0;
 }
+.message-delivery {
+  display: inline-flex;
+  flex: 0 0 13px;
+  margin-bottom: 2px;
+  color: var(--muted);
+}
+.message-delivery.echoed {
+  color: var(--healthy);
+}
+.message-delivery.unconfirmed {
+  color: #d6b574;
+}
+.message-delivery.failed {
+  color: #f0a0a0;
+}
+
 .preferences-view {
   flex: 1;
   min-height: 0;

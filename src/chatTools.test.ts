@@ -1,5 +1,10 @@
 import { expect, it } from "vitest";
-import { applyEcho, matchesEcho, type Submission } from "./chatTools";
+import {
+  applyEcho,
+  coalesceSelfTells,
+  matchesEcho,
+  type Submission,
+} from "./chatTools";
 import type { ChatRecord } from "./protocol";
 const sent: Submission = {
   id: 1,
@@ -49,4 +54,54 @@ it("one echo acknowledges at most one identical submission, and never a failed o
     "echoed",
     "submitted",
   ]);
+});
+
+it("binds a confirmation to its exact record and ignores repeat confirmations", () => {
+  const queue = [sent, { ...sent, id: 2 }];
+  const confirmed = applyEcho(queue, echo);
+  expect(confirmed[0].echoKey).toBe("synthetic-3");
+  expect(applyEcho(confirmed, echo)).toEqual(confirmed);
+  expect(applyEcho(confirmed, { ...echo, message_id: 4 })[1].echoKey).toBe(
+    "synthetic-4",
+  );
+});
+
+it("coalesces each self-tell receive/confirmation pair once, in either order", () => {
+  const first = {
+    ...echo,
+    sender: "ExampleCharacter",
+    target: "ExampleCharacter",
+    channel: 7,
+    message_id: 10,
+  };
+  const confirmation = { ...first, channel: 14, message_id: 11 };
+  const second = { ...first, message_id: 12 };
+  const secondConfirmation = { ...confirmation, message_id: 13 };
+  expect(
+    coalesceSelfTells([first, confirmation, second, secondConfirmation]),
+  ).toEqual([confirmation, secondConfirmation]);
+  expect(coalesceSelfTells([confirmation, first])).toEqual([confirmation]);
+  expect(coalesceSelfTells([first, second])).toEqual([first, second]);
+  expect(
+    coalesceSelfTells([first, { ...confirmation, session_id: "different" }]),
+  ).toHaveLength(2);
+  expect(
+    coalesceSelfTells([
+      first,
+      { ...confirmation, timestamp: "2026-01-01T00:00:10Z" },
+    ]),
+  ).toHaveLength(2);
+  expect(
+    coalesceSelfTells([echo, { ...echo, channel: 7, message_id: 4 }]),
+  ).toHaveLength(2);
+  const toSelf = {
+    ...sent,
+    message: {
+      ...sent.message,
+      channel: "tell" as const,
+      recipient: "ExampleCharacter",
+    },
+  };
+  expect(matchesEcho(toSelf, first)).toBe(false);
+  expect(matchesEcho(toSelf, confirmation)).toBe(true);
 });

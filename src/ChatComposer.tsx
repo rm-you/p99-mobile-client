@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
+import type { Server } from "./protocol";
 import {
   SEND_CHANNELS,
   messageError,
@@ -12,11 +13,13 @@ import type { OutgoingMessage, ReplySelection, SendChannel } from "./composer";
 /** A single-line composer grows to four lines and retains drafts until locally accepted. */
 export default function ChatComposer({
   hidden,
+  server = "green",
   connected,
   reply,
   onSend,
 }: {
   hidden: boolean;
+  server?: Server;
   connected: boolean;
   reply: ReplySelection | null;
   onSend: (message: OutgoingMessage) => Promise<void>;
@@ -61,7 +64,7 @@ export default function ChatComposer({
     return () => watch.disconnect();
   }, [text, hidden]);
 
-  const invalid = messageError(text);
+  const invalid = messageError(text, server);
   const targetInvalid = channel === "tell" && !validRecipient(recipient);
   const canSend =
     connected && !sending && !!messageText(text) && !invalid && !targetInvalid;

@@ -3,6 +3,8 @@ import type { CSSProperties, FormEvent } from "react";
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
 import {
   CHANNELS,
+  SERVERS,
+  serverLabel,
   MAX_RECORDS,
   matchesChannels,
   recordText,
@@ -23,6 +25,7 @@ import type { SavedProfile, VaultStatus } from "./SavedProfiles";
 import ConfirmDialog from "./ConfirmDialog";
 import ItemModal from "./ItemModal";
 import MessageRow from "./MessageRow";
+import OutgoingMessageRow from "./OutgoingMessageRow";
 import ChatComposer from "./ChatComposer";
 import type { OutgoingMessage, ReplySelection } from "./composer";
 import { connectionDisplay } from "./connection";
@@ -31,7 +34,13 @@ import Preferences from "./Preferences";
 import MessageActions from "./MessageActions";
 import { defaultExperience } from "./experience";
 import type { Experience, HistoryOwner } from "./experience";
-import { applyEcho, recordKey } from "./chatTools";
+import {
+  applyEcho,
+  coalesceSelfTells,
+  isSelfTell,
+  matchesSubmission,
+  recordKey,
+} from "./chatTools";
 import type { Submission } from "./chatTools";
 import useUnread from "./useUnread";
 interface TimelineEntry {
@@ -39,6 +48,11 @@ interface TimelineEntry {
   at: number;
   text: string;
 }
+
+type ChatEntry =
+  | { kind: "message"; at: number; record: ChatRecord; submission?: Submission }
+  | { kind: "outgoing"; at: number; submission: Submission }
+  | { kind: "marker"; at: number; marker: TimelineEntry };
 
 const initialSettings: ConnectRequest = {
   user: "",
@@ -119,9 +133,37 @@ export default function App() {
     experience.muted_authors.some(
       (name) => name.toLowerCase() === record.sender?.toLowerCase(),
     );
+  const attempts = useMemo(
+    () => submissions.filter((s) => s.state !== "echoed"),
+    [submissions],
+  );
+  const receipts = useMemo(
+    () =>
+      new Map(
+        submissions.flatMap((s) =>
+          s.echoKey ? [[s.echoKey, s] as const] : [],
+        ),
+      ),
+    [submissions],
+  );
+  const displayedRecords = useMemo(
+    () =>
+      coalesceSelfTells(records).filter(
+        (record) =>
+          !(
+            isSelfTell(record) &&
+            record.channel === 7 &&
+            attempts.some(
+              (s) => s.state !== "failed" && matchesSubmission(s, record),
+            )
+          ),
+      ),
+    [records, attempts],
+  );
+  const messageCount = displayedRecords.length + attempts.length;
   const visible = useMemo(
     () =>
-      records.filter(
+      displayedRecords.filter(
         (record) =>
           !experience.muted_authors.some(
             (name) => name.toLowerCase() === record.sender?.toLowerCase(),
@@ -131,7 +173,40 @@ export default function App() {
             .toLocaleLowerCase()
             .includes(query.toLocaleLowerCase()),
       ),
-    [records, channels, query, experience.muted_authors],
+    [displayedRecords, channels, query, experience.muted_authors],
+  );
+  const entries = useMemo(
+    (): ChatEntry[] =>
+      [
+        ...visible.map((record): ChatEntry => {
+          const submission = receipts.get(recordKey(record));
+          return {
+            kind: "message",
+            at: submission?.at ?? Date.parse(record.timestamp),
+            record,
+            submission,
+          };
+        }),
+        ...attempts
+          .filter(
+            (s) =>
+              channels.includes(s.message.channel) &&
+              `${sessionIdentity?.character ?? ""} ${s.message.text}`
+                .toLocaleLowerCase()
+                .includes(query.toLocaleLowerCase()),
+          )
+          .map((submission): ChatEntry => ({
+            kind: "outgoing",
+            at: submission.at,
+            submission,
+          })),
+        ...timeline.map((marker): ChatEntry => ({
+          kind: "marker",
+          at: marker.at,
+          marker,
+        })),
+      ].sort((a, b) => a.at - b.at),
+    [visible, receipts, attempts, channels, query, sessionIdentity, timeline],
   );
   const unmutedRecords = useMemo(
     () =>
@@ -169,6 +244,7 @@ export default function App() {
   }
   function clearView() {
     setRecords([]);
+    setSubmissions([]);
     setTimeline([]);
     unread.reset();
   }
@@ -454,7 +530,7 @@ export default function App() {
   useEffect(() => {
     if (follow && list.current)
       list.current.scrollTop = list.current.scrollHeight;
-  }, [records, channels, query, follow, tab, filtersOpen]);
+  }, [records, submissions, channels, query, follow, tab, filtersOpen]);
 
   async function connect(profile?: SavedProfile) {
     if (
@@ -658,7 +734,7 @@ export default function App() {
     const id = ++submissionId.current;
     const session = status.session_id;
     setSubmissions((previous) => [
-      ...previous.slice(-4),
+      ...previous.slice(-(MAX_RECORDS - 1)),
       {
         id,
         message,
@@ -694,8 +770,8 @@ export default function App() {
           <h1>P99 Mobile Chat</h1>
           {tab === "chat" && sessionIdentity?.character && (
             <p className="session-context">
-              {sessionIdentity.character} · P99{" "}
-              {sessionIdentity.server === "green" ? "Green" : "Blue"}
+              {sessionIdentity.character} ·{" "}
+              {serverLabel(sessionIdentity.server)}
               {status?.zone ? ` · ${zoneName(status.zone)}` : ""}
             </p>
           )}
@@ -718,7 +794,7 @@ export default function App() {
       )}
       {!native && (
         <div className="notice preview">
-          UI preview · Use the installed app to connect to P99.
+          UI preview · Use the installed app to connect.
         </div>
       )}
 
@@ -788,7 +864,7 @@ export default function App() {
                 role="group"
                 aria-labelledby="server-label"
               >
-                {(["green", "blue"] as const).map((server) => (
+                {SERVERS.map((server) => (
                   <button
                     className={settings.server === server ? "selected" : ""}
                     type="button"
@@ -798,10 +874,15 @@ export default function App() {
                       setSettings((previous) => ({ ...previous, server }))
                     }
                   >
-                    P99 {server}
+                    {serverLabel(server)}
                   </button>
                 ))}
               </div>
+              {settings.server === "quarm" && (
+                <p className="settings-note">
+                  Use your TAKP login-server account.
+                </p>
+              )}
               <label>
                 Character name
                 <input
@@ -943,7 +1024,7 @@ export default function App() {
             />
           </details>
           <div className="chat-toolbar">
-            <span>{records.length.toLocaleString()} messages</span>
+            <span>{messageCount.toLocaleString()} messages</span>
             {unread.tells > 0 && (
               <button
                 className="text-button unread-tells"
@@ -960,7 +1041,7 @@ export default function App() {
               className="text-button"
               type="button"
               onClick={clearView}
-              disabled={!records.length}
+              disabled={!messageCount}
             >
               Clear
             </button>
@@ -979,56 +1060,55 @@ export default function App() {
               );
             }}
           >
-            {visible.length || timeline.length ? (
-              [
-                ...visible.map((record) => ({
-                  at: new Date(record.timestamp).getTime(),
-                  record,
-                  marker: null as TimelineEntry | null,
-                })),
-                ...timeline.map((marker) => ({
-                  at: marker.at,
-                  record: null as ChatRecord | null,
-                  marker,
-                })),
-              ]
-                .sort((a, b) => a.at - b.at)
-                .map((entry) =>
-                  entry.record ? (
-                    <Fragment key={recordKey(entry.record)}>
-                      {unread.boundary === recordKey(entry.record) && (
-                        <div className="timeline-marker unread-divider">
-                          New messages
-                        </div>
-                      )}
-                      <MessageRow
-                        record={entry.record}
-                        onItem={setSelectedItem}
-                        onReply={chooseReply}
-                        onActions={setSelectedMessage}
-                      />
-                    </Fragment>
-                  ) : (
-                    <div
-                      className="timeline-marker"
-                      key={`timeline-${entry.marker!.id}`}
-                    >
-                      <time>
-                        {new Date(entry.at).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </time>{" "}
-                      {entry.marker!.text}
-                    </div>
-                  ),
-                )
+            {entries.length ? (
+              entries.map((entry) =>
+                entry.kind === "message" ? (
+                  <Fragment
+                    key={
+                      entry.submission
+                        ? `outgoing-${entry.submission.id}`
+                        : recordKey(entry.record)
+                    }
+                  >
+                    {unread.boundary === recordKey(entry.record) && (
+                      <div className="timeline-marker unread-divider">
+                        New messages
+                      </div>
+                    )}
+                    <MessageRow
+                      record={entry.record}
+                      onItem={setSelectedItem}
+                      onReply={chooseReply}
+                      onActions={setSelectedMessage}
+                      delivery={entry.submission?.state}
+                    />
+                  </Fragment>
+                ) : entry.kind === "outgoing" ? (
+                  <OutgoingMessageRow
+                    key={`outgoing-${entry.submission.id}`}
+                    submission={entry.submission}
+                  />
+                ) : (
+                  <div
+                    className="timeline-marker"
+                    key={`timeline-${entry.marker.id}`}
+                  >
+                    <time>
+                      {new Date(entry.at).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </time>{" "}
+                    {entry.marker.text}
+                  </div>
+                ),
+              )
             ) : (
               <div className="empty-state">
                 <h3>
                   {!channels.length
                     ? "No channels selected"
-                    : records.length
+                    : messageCount
                       ? "No matching messages"
                       : active
                         ? "Waiting for messages"
@@ -1037,7 +1117,7 @@ export default function App() {
                 <p>
                   {!channels.length
                     ? "Open Filters to choose which channels to show."
-                    : records.length
+                    : messageCount
                       ? "Try another channel or search."
                       : active
                         ? "Incoming messages will appear here."
@@ -1054,7 +1134,7 @@ export default function App() {
               </div>
             )}
           </div>
-          {!follow && visible.length > 0 && (
+          {!follow && entries.length > 0 && (
             <button className="latest-button" onClick={() => setFollow(true)}>
               {unread.count
                 ? `${unread.count} new ${unread.count === 1 ? "message" : "messages"}`
@@ -1063,28 +1143,8 @@ export default function App() {
           )}
         </section>
       )}
-      {tab === "chat" && submissions.length > 0 && (
-        <div className="submission-status" role="status">
-          {submissions.slice(-1).map((s) => (
-            <span key={s.id} className={s.state === "failed" ? "failed" : ""}>
-              {s.message.channel === "tell"
-                ? `Tell → ${s.message.recipient}`
-                : channelLabel(s.message.channel)}{" "}
-              ·{" "}
-              {
-                {
-                  submitting: "Submitting…",
-                  submitted: "Submitted",
-                  echoed: "Server echo received",
-                  unconfirmed: "Submitted · no echo received",
-                  failed: "Failed · draft kept",
-                }[s.state]
-              }
-            </span>
-          ))}
-        </div>
-      )}
       <ChatComposer
+        server={sessionIdentity?.server ?? settings.server}
         key={generation.current}
         hidden={tab !== "chat"}
         connected={canSend}
@@ -1147,7 +1207,7 @@ export default function App() {
               ? "Update saved login?"
               : "Save this character?"
           }
-          description={`Save ${pendingLogin.character} on P99 ${pendingLogin.server === "green" ? "Green" : "Blue"} with this account and password for next time? Your connection will continue either way.`}
+          description={`Save ${pendingLogin.character} on ${serverLabel(pendingLogin.server)} with this account and password for next time? Your connection will continue either way.`}
           confirm="Save"
           cancel="Not now"
           onCancel={() => setPendingLogin(null)}
@@ -1162,7 +1222,7 @@ export default function App() {
         <ConfirmDialog
           title={
             confirmation === "disconnect"
-              ? "Disconnect from P99?"
+              ? "Disconnect from the server?"
               : "Delete saved login?"
           }
           description={
@@ -1183,7 +1243,11 @@ export default function App() {
         />
       )}
       {selectedItem && (
-        <ItemModal item={selectedItem} onClose={() => setSelectedItem(null)} />
+        <ItemModal
+          item={selectedItem}
+          server={sessionIdentity?.server ?? settings.server}
+          onClose={() => setSelectedItem(null)}
+        />
       )}
       {selectedMessage && (
         <MessageActions

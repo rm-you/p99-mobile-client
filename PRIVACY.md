@@ -2,8 +2,9 @@
 
 P99 Mobile Chat is a community client maintained at
 [rm-you/p99-mobile-client](https://github.com/rm-you/p99-mobile-client).
-It connects directly to the EverQuest login service and the selected Project 1999
-world and zone servers. The project does not operate a relay, account service,
+It connects directly to the selected Project 1999 or Project Quarm login, world,
+and zone servers. P99 uses the EQEmulator login service; Quarm uses the TAKP login
+service. The project does not operate a relay, account service,
 analytics service, advertising service, or automatic crash-reporting endpoint.
 
 ## Login and saved characters
@@ -14,9 +15,11 @@ existing protocol. This app does not add end-to-end encryption to game chat.
 The active network worker keeps login credentials in memory to reconnect. A
 clean disconnect ends that worker; reopening the app requires another login.
 
-Saving a character is optional. On Android, each saved login is encrypted with an
-authentication-bound Android Keystore key. Unlocking it requires a supported
-biometric or device credential. Encrypted credential files are stored in Android's
+Saving a character is optional. On Android, each saved login is encrypted with
+AES-256-GCM. Its random encryption key is sealed by an Android Keystore RSA key
+whose private-key use requires authentication. Saving newly entered credentials
+needs no unlock; editing while retaining existing credentials needs one unlock.
+Unlocking requires a supported biometric or device credential. Encrypted credential files are stored in Android's
 no-backup directory. The app does not return saved account/password values to the
 webview. Character names and server labels remain visible in the saved list.
 

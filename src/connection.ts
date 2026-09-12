@@ -2,7 +2,7 @@ import { CONNECTION_STAGES } from "./protocol";
 import type { ConnectionStage, SessionStatus } from "./protocol";
 
 const STAGE_LABELS: Record<ConnectionStage, string> = {
-  connecting_login: "Signing in to P99…",
+  connecting_login: "Signing in…",
   authenticating: "Checking login details…",
   selecting_server: "Selecting server…",
   connecting_world: "Connecting to server…",

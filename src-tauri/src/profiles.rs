@@ -110,6 +110,17 @@ mod tests {
         }
     }
     #[test]
+    fn all_server_profile_labels_roundtrip_without_exposing_credentials() {
+        for server in ["green", "blue", "quarm"] {
+            let value = serde_json::json!({"id":"12345678-1234-4234-8234-123456789abc", "server":server, "character":"ExampleCharacter"});
+            let profile: SavedProfile = serde_json::from_value(value.clone()).unwrap();
+            assert_eq!(serde_json::to_value(profile).unwrap(), value);
+        }
+        let invalid = serde_json::json!({"id":"12345678-1234-4234-8234-123456789abc", "server":"unknown", "character":"ExampleCharacter"});
+        assert!(serde_json::from_value::<SavedProfile>(invalid).is_err());
+    }
+
+    #[test]
     fn edits_keep_credentials_only_as_a_pair_and_do_not_collide() {
         let profile = existing();
         let mut request = SaveProfile {

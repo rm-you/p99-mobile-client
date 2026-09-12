@@ -1,4 +1,5 @@
 import SwipeToDelete from "./SwipeToDelete";
+import { serverLabel } from "./protocol";
 import type { Server } from "./protocol";
 
 export interface SavedProfile {
@@ -12,7 +13,7 @@ export interface VaultStatus {
   legacySaved: boolean;
 }
 export const profileLabel = (profile: SavedProfile) =>
-  `${profile.character} · P99 ${profile.server === "green" ? "Green" : "Blue"}`;
+  `${profile.character} · ${serverLabel(profile.server)}`;
 
 /** Keep labels visible while the credentials remain in native secure storage. */
 export default function SavedProfiles({
@@ -49,7 +50,7 @@ export default function SavedProfiles({
                 aria-label={`Unlock and connect ${profileLabel(profile)}`}
               >
                 <strong>{profile.character}</strong>
-                <span>P99 {profile.server === "green" ? "Green" : "Blue"}</span>
+                <span>{serverLabel(profile.server)}</span>
               </button>
               <button
                 type="button"

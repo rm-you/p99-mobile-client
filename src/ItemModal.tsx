@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { ItemLink } from "./protocol";
+import type { ItemLink, Server } from "./protocol";
 
 export interface ItemDetails {
   name: string;
@@ -14,9 +14,11 @@ type Lookup =
 /** Native dialog keeps focus inside the item view and restores it when closed. */
 export default function ItemModal({
   item,
+  server = "green",
   onClose,
 }: {
   item: ItemLink;
+  server?: Server;
   onClose: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -130,6 +132,11 @@ export default function ItemModal({
         )}
       </div>
       <footer className="item-modal-footer">
+        {server === "quarm" && (
+          <p className="settings-note">
+            P99 reference data; Quarm item stats may differ.
+          </p>
+        )}
         <button
           className="wiki-link"
           type="button"

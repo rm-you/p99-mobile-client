@@ -5,6 +5,8 @@ import type { ChatRecord, ItemLink, Message } from "./protocol";
 import { replyRecipient } from "./composer";
 import { isOwnMessage, recordKey } from "./chatTools";
 import SwipeToReply from "./SwipeToReply";
+import MessageDelivery from "./MessageDelivery";
+import type { Submission } from "./chatTools";
 
 function LinkedText({
   message,
@@ -53,11 +55,13 @@ export default function MessageRow({
   onItem,
   onReply,
   onActions,
+  delivery,
 }: {
   record: ChatRecord;
   onItem: (item: ItemLink) => void;
   onReply?: (recipient: string) => void;
   onActions?: (record: ChatRecord) => void;
+  delivery?: Submission["state"];
 }) {
   const channel = recordChannel(record);
   const recipient = onReply ? replyRecipient(record) : null;
@@ -92,29 +96,32 @@ export default function MessageRow({
           })}
         </time>
       </div>
-      <div className="message-text">
-        {record.type === "decode_error" ? (
-          recordText(record)
-        ) : record.text !== undefined ? (
-          <LinkedText
-            message={{ text: record.text, item_links: record.item_links }}
-            onItem={onItem}
-          />
-        ) : record.arguments?.length ? (
-          <>
-            {record.string_id !== undefined
-              ? `Game message #${record.string_id}: `
-              : ""}
-            {record.arguments.map((argument, index) => (
-              <Fragment key={index}>
-                {index > 0 && " · "}
-                <LinkedText message={argument} onItem={onItem} />
-              </Fragment>
-            ))}
-          </>
-        ) : (
-          recordText(record)
-        )}
+      <div className="message-body">
+        <div className="message-text">
+          {record.type === "decode_error" ? (
+            recordText(record)
+          ) : record.text !== undefined ? (
+            <LinkedText
+              message={{ text: record.text, item_links: record.item_links }}
+              onItem={onItem}
+            />
+          ) : record.arguments?.length ? (
+            <>
+              {record.string_id !== undefined
+                ? `Game message #${record.string_id}: `
+                : ""}
+              {record.arguments.map((argument, index) => (
+                <Fragment key={index}>
+                  {index > 0 && " · "}
+                  <LinkedText message={argument} onItem={onItem} />
+                </Fragment>
+              ))}
+            </>
+          ) : (
+            recordText(record)
+          )}
+        </div>
+        {delivery && <MessageDelivery state={delivery} />}
       </div>
     </article>
   );

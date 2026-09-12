@@ -1,6 +1,7 @@
 use crate::outgoing::ChatOutbox;
 use p99_logger_client::client::{
     CancellationToken, Client, ClientConfig, ClientEvent, ClientIdentity, LoginError, RunOptions,
+    ServerProtocol,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -10,11 +11,27 @@ use std::{
 
 pub use tauri_plugin_secure_login::Server;
 
-fn server_name(server: Server) -> &'static str {
-    match server {
-        Server::Green => "Project 1999: Green (Velious, PvE)",
-        Server::Blue => "Project 1999: Blue (Velious, PvE)",
-    }
+/// Select both the wire protocol and its registered world name before starting a worker.
+fn client_config(request: ConnectRequest) -> ClientConfig {
+    let (protocol, world) = match request.server {
+        Server::Green => (
+            ServerProtocol::Project1999,
+            "Project 1999: Green (Velious, PvE)",
+        ),
+        Server::Blue => (
+            ServerProtocol::Project1999,
+            "Project 1999: Blue (Velious, PvE)",
+        ),
+        // TAKP appends " Server" to the registered world name, which already ends in "Server".
+        Server::Quarm => (ServerProtocol::Quarm, "The Project Quarm Server Server"),
+    };
+    ClientConfig::for_protocol(
+        protocol,
+        request.user,
+        request.pass,
+        world,
+        request.character,
+    )
 }
 
 // Manual credentials arrive over local IPC and are never logged.
@@ -93,12 +110,8 @@ impl SessionController {
         mut send: impl FnMut(AppEvent) -> Result<(), String> + Send + 'static,
         begin: impl FnOnce(CancellationToken) -> O,
     ) -> Result<(), String> {
-        let config = ClientConfig::new(
-            request.user,
-            request.pass,
-            server_name(request.server),
-            request.character,
-        );
+        let config = client_config(request);
+        let protocol = config.protocol;
         let identity = ClientIdentity {
             hostname: format!("P99-{}", std::env::consts::OS),
             username: "mobile".into(),
@@ -126,7 +139,7 @@ impl SessionController {
             .lock()
             .map_err(|_| "Session state unavailable")? = Some(cancel.clone());
         let worker_cancel = cancel.clone();
-        let inbox = self.outbox.open(cancel.clone());
+        let inbox = self.outbox.open(cancel.clone(), protocol);
         let mut observer = begin(cancel.clone());
         let worker = thread::Builder::new()
             .name("p99-session".into())
@@ -200,6 +213,43 @@ mod tests {
             pass: "EXAMPLE_PASSWORD".into(),
             character: "ExampleCharacter".into(),
             server: Server::Green,
+        }
+    }
+
+    #[test]
+    fn each_server_uses_its_own_protocol_and_login_endpoint() {
+        for (server, protocol, host, port, world) in [
+            (
+                Server::Green,
+                ServerProtocol::Project1999,
+                "login.eqemulator.net",
+                5998,
+                "Project 1999: Green (Velious, PvE)",
+            ),
+            (
+                Server::Blue,
+                ServerProtocol::Project1999,
+                "login.eqemulator.net",
+                5998,
+                "Project 1999: Blue (Velious, PvE)",
+            ),
+            (
+                Server::Quarm,
+                ServerProtocol::Quarm,
+                "loginserver.takproject.net",
+                6000,
+                "The Project Quarm Server Server",
+            ),
+        ] {
+            let mut request = request();
+            request.server = server;
+            let config = client_config(request);
+            assert_eq!(config.protocol, protocol);
+            assert_eq!(config.host, host);
+            assert_eq!(config.port, port);
+            assert_eq!(config.server, world);
+            assert_eq!(config.character, "ExampleCharacter");
+            assert!(!config.include_raw);
         }
     }
 

@@ -9,6 +9,7 @@ use tauri::{
 pub enum Server {
     Green,
     Blue,
+    Quarm,
 }
 
 /// These labels may be shown while the account credentials remain locked.

@@ -1,5 +1,26 @@
 # Roadmap
 
+## Project Quarm integration
+
+Implemented: Quarm server selection, TAKP login configuration through the shared
+networking crate, saved Quarm profiles, server-separated history, and
+protocol-specific outbound message limits. Item details use the existing P99
+reference catalog and identify possible differences on Quarm.
+
+Validation: synthetic tests cover server/protocol routing, manual and saved Quarm
+selection, profile serialization, history isolation, message limits, delivery
+indicators, and self-tell display. Emulator updates preserve both saved profiles,
+leave the manual credentials blank, and start offline. Manual testing has
+exercised Quarm login, zone entry, received chat, and outbound tells. The selected
+world is `The Project Quarm Server Server`, including TAKP's appended suffix.
+
+The networking crate fixes the zone port's byte order and now announces DLL
+version 7 before zone admission completes. Exact version packets and requests
+before/after admission pass a synthetic localhost-zone regression. A live retest
+confirmed that Quarm connects without the outdated-client warning. Broader
+item-link, long-duration connection, and reconnect coverage remain outstanding.
+The networking dependency uses the library's `main` branch.
+
 ## 1. Persist settings and protect saved credentials
 
 Implemented: persistent server, channel filter, and follow-latest
@@ -13,9 +34,12 @@ No plaintext credential storage or decrypted password return to the webview.
 
 Validation:
 - Android APKs build for ARM64 and x86_64. Emulator checks cover device PIN storage,
-  two independent profiles surviving restart, cancelled unlock/replacement,
-  authenticated edits that retain credentials, tamper rejection, and isolated
-  deletion. Existing saved entries were preserved during these checks.
+  two independent profiles surviving restart, cancelled credential-retaining
+  edits, and isolated deletion. The current vault upgrades AES-only entries
+  with one unlock; subsequent edits also use one fresh unlock. Altered labels
+  and keys copied from another profile are rejected. Saving newly entered
+  credentials needs no extra authentication. Existing saved entries were
+  preserved during these checks.
 - Remaining: physical Android biometric testing, including older Android devices.
 - Remaining: Xcode build and real iOS Keychain / Face ID / Touch ID validation.
 
@@ -93,10 +117,11 @@ Implemented: adjustable text size, compact spacing, higher-contrast colors,
 quieter metadata, native dark system bars, phone bottom sheets, and larger action
 targets. Incoming unread counts, unread tells, new-message dividers, and a counted
 Latest control complement the existing channel filters. Long-press opens the message menu, with a keyboard/screen-reader action control.
-The menu supports copy, native sharing, reply, and mute; own messages read **You**.
+The menu supports copy, native sharing, reply, and mute; own messages read **You**
+and offer copy/share without self-reply gestures or actions.
 
-Implemented: explicit tell destinations; submitted/echoed/failed/unconfirmed
-feedback; reconnect timeline notices; opt-in per-character SQLite history with
+Implemented: explicit tell destinations; per-message pending, sent, failed, and
+unconfirmed icons; self-tell receive/confirmation pairing for display; reconnect timeline notices; opt-in per-character SQLite history with
 age/count limits; restart loading, clear confirmation, and text/JSONL exports.
 The complete structured item-link data is preserved. Muting does not destroy history.
 

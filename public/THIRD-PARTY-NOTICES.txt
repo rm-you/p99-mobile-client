@@ -792,9 +792,9 @@ Source: https://crates.io/crates/option-ext/0.2.0
 License texts: fb72181dd02473b6e42749e14362ede6ba6202540dcc2ce98299ed9051fbde61
 
 Rust: p99-logger-client 0.1.0
-Declared license: Not declared in this upstream package; see DEPENDENCIES.md
-Source: git+https://github.com/rm-you/p99-logger-client?branch=main#1ddbccac4b6f0d22e02f37b533f677c56204fee9
-The published package omits a separate license file; refer to the source and declared license above.
+Declared license: MIT
+Source: git+https://github.com/rm-you/p99-logger-client?branch=main#27c56ecc6d4a43b750ed26882ab7cd8a06f61e61
+License texts: 2d2d378b11d46176a8ad1ba4840e4bf21d1b9df23344a53af3cdcfd7a59eccba
 
 Rust: parking_lot 0.12.5
 Declared license: MIT OR Apache-2.0
@@ -2867,6 +2867,29 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+
+===== 2d2d378b11d46176a8ad1ba4840e4bf21d1b9df23344a53af3cdcfd7a59eccba =====
+MIT License
+
+Copyright (c) 2026 p99-logger-client contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 ===== 2f213ec6b1355dc841dc489c9e7ce1dddd07611df474efcf61b8a960797398e9 =====
 Apache License
