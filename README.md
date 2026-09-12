@@ -16,6 +16,12 @@ validation and is not part of the Android release.
 The app's own code is [MIT licensed](LICENSE). Dependencies and the bundled item
 snapshot retain their original terms; see [component and data notices](DEPENDENCIES.md).
 
+<p align="center">
+  <img src="docs/screenshots/android-chat.png" alt="P99 Mobile Chat on Android showing colored chat channels, clickable item links, and the message composer" width="360">
+</p>
+
+<p align="center"><em>The Android v1.1.0 release APK, displaying fictional chat from a local test server.</em></p>
+
 ## Using the app
 
 Select **P99 Green**, **P99 Blue**, or **Quarm**, enter your login server account and
