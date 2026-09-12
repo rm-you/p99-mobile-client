@@ -1,20 +1,13 @@
 # P99 Mobile Chat
 
-A native Android chat app for Project 1999 and Project Quarm, built with Tauri 2, React, and the
-[reusable Rust P99 client](https://github.com/rm-you/p99-logger-client).
-The phone connects directly to the login, world, and zone servers; no relay
-service or graphical EverQuest client is required.
+Chat on Project 1999 or Project Quarm from your Android phone. Connect as your
+own character, read chat, reply to tells, and look up items without running the
+graphical game client.
 
-Download the ARM64 APK from [GitHub Releases](https://github.com/rm-you/p99-mobile-client/releases).
-See [installation and updates](INSTALLING.md), including the one-time migration
-from development-signed APKs. Distribution is direct; no Play Store account is
-needed. The repository also includes iOS source, which requires separate platform
-validation and is not part of the Android release.
-
-[Privacy](PRIVACY.md) · [Changes](CHANGELOG.md) · [Release process](RELEASING.md)
-
-The app's own code is [MIT licensed](LICENSE). Dependencies and the bundled item
-snapshot retain their original terms; see [component and data notices](DEPENDENCIES.md).
+**[Download the Android APK](https://github.com/rm-you/p99-mobile-client/releases/latest)**
+· [Installation and updates](INSTALLING.md)
+· [User guide](docs/USER_GUIDE.md)
+· [What's new](CHANGELOG.md)
 
 <p align="center">
   <img src="docs/screenshots/android-chat.png" alt="P99 Mobile Chat on Android showing colored chat channels, clickable item links, and the message composer" width="360">
@@ -22,200 +15,41 @@ snapshot retain their original terms; see [component and data notices](DEPENDENC
 
 <p align="center"><em>The Android v1.1.0 release APK, displaying fictional chat from a local test server.</em></p>
 
-## Using the app
+## Get connected
 
-Select **P99 Green**, **P99 Blue**, or **Quarm**, enter your login server account and
-password, and provide the name of an existing character, then tap **Login**. The character joins
-the zone where you last left them. Log out of the graphical game client first.
+1. Log out of the graphical game client.
+2. Open **Connection**, choose **P99 Green**, **P99 Blue**, or **Quarm**, and enter
+   your account, password, and existing character's name.
+3. Tap **Login**. Your character joins the zone where you left them. Choose
+   **Save** when prompted if you'd like to reconnect later using device authentication.
 
-Quarm uses your **TAKP login-server account**, while P99 uses your EQEmulator
-login-server account. The selected server chooses the appropriate login endpoint
-and wire protocol automatically. Saved characters and optional chat history keep
-Quarm separate from P99, even when character names match. Quarm login, chat,
-and the DLL version announcement have been confirmed in the Android app. See
-the [roadmap](ROADMAP.md).
+P99 uses your **EQEmulator login-server account**; Quarm uses your
+**TAKP login-server account**.
 
-The chat view receives all communication channels and lets you filter by
-channel or search the most recent 1,500 messages. Expand **Filters** and tap the colored pills to select any
-combination of channels and search their messages, then collapse it to make room
-for chat. All channels are selected initially; **All** and **None** make changing
-selections quicker. Selected pills have a subtle colored background. Filters start collapsed each launch and keep applying while collapsed. Raid and Group are
-excluded from the selectable channels. Chat uses Titanium's original colors
-with yellow-orange OOC, and the header displays full zone names. Empty guild
-MOTDs are hidden. During sign-in, a small progress bar shows the current step
-and percentage. It advances when connection milestones complete; it does not
-estimate remaining time.
-Tap an item link to see stats from the bundled catalog of 12,122 item entries.
-The app reads the original SQLite snapshot and formats matching rows on demand,
-without retaining the whole catalog as formatted text. This works offline with
-no Wiki request. Matching uses the linked name and a
-reference item ID; missing or conflicting entries show an unavailable message.
-**View on P99 Wiki** opens the item page in your browser only when tapped.
-The catalog contains community reference data and can have gaps; see its
-[source and update notes](src-tauri/data/README.md). Item link IDs and original
-link bodies remain available in the received records. Quarm item details identify
-the catalog as P99 reference data because Quarm stats may differ. Clearing the view removes its in-memory messages; saved history is cleared separately in Settings.
+## Using chat
 
-Choose Say, Tell, Guild, Auction, OOC, or Shout in the composer to send a message.
-The text box starts at one line and grows to four before scrolling. Tap the
-paper-plane icon to send; Enter adds a line, and Ctrl/Cmd+Enter also submits.
-Line breaks become spaces in one game message. For tells, enter a character name
-or swipe another player's message left or right to select its author.
-Replies always use Tell, regardless of
-the original channel. Sent-tell echoes display and filter as Tell as well.
-On Android, the chat view resizes above the on-screen keyboard so the message
-field and send button remain visible while typing.
+- **Read and filter:** expand **Filters** to search messages or choose channels.
+- **Send:** choose a channel, type a message, and tap the paper-plane icon.
+- **Reply:** swipe another player's message in either direction to send them a tell.
+- **Inspect items:** tap an item link for offline details. Quarm shows P99 reference
+  stats, which may differ.
+- **Preferences:** use **Settings** for text size, optional chat history, and alerts.
 
-Sending is enabled only while the current character is connected. Drafts survive
-tab changes and failed submissions, but are cleared when starting a new login.
-They are held only in memory. Pending commands are discarded when the connection
-ends, so reconnecting cannot unexpectedly replay unsent chat. Submission means
-the local network queue accepted the message. A local pending row appears immediately
-and is replaced by the matching server record when confirmed. Only received
-records enter saved history or exports. Group, Raid, emotes, and slash-command
-parsing are not offered by the composer.
+The app tries to stay connected in the background, but Android's battery settings
+can interrupt it. Use **Disconnect** or **Stop** in the connection notification
+when you're done.
 
-Server, selected channels, and follow-latest preferences save on this
-device. After a manual connection starts, the app asks whether to save the
-character, server, account, and password together. Choose **Save** or
-**Not now**; either choice leaves the connection running. Saved characters appear above the **New connection** form;
-tap a character/server entry to unlock it with device authentication and connect.
-The account and password pass directly to the Rust worker and are never filled
-back into the webview. Each saved character has independent protected storage.
-Character/server labels are visible while credentials remain locked. The manual
-character field starts blank; the manual form never restores a previous character name. Optional chat history is also organized by character and server.
-
-Use the pencil to edit a saved character. Leave both account and password blank
-to keep its existing login, or enter both to replace it. Keeping the login during
-an Android edit requires one unlock. Saving credentials you have just entered
-does not require an additional unlock.
-Swipe left or tap the trash icon to delete an entry; both ask for confirmation. The manual form remains
-available for connecting without saving.
-
-After upgrading from the single-login version, **Previous saved login** lets you
-assign that login a character and server. The old entry is kept until the new
-profile is successfully saved. If cleanup fails, the previous entry remains
-visible for explicit removal.
-
-- Android encrypts each saved tuple with AES-256-GCM and seals its random data
-  key with an Android Keystore RSA-OAEP public key. The private key requires
-  authentication on every unlock; encrypting a replacement needs no second
-  prompt. Existing AES-only entries migrate when saved successfully. Android 11+ supports a strong
-  biometric or device PIN/pattern/password; Android 7–10 requires an enrolled
-  strong biometric. Encrypted data stays in the app's no-backup directory.
-- iOS uses a device-only Keychain item requiring user presence (Face ID,
-  Touch ID, or device passcode). A device passcode must be configured.
-- Without suitable device authentication, you can connect by entering your
-  credentials each time. There is no plaintext storage fallback. Native desktop
-  development also uses manual login.
-
-If a key becomes unavailable after changing device security settings, edit its
-entry with both account and password, or delete it and save it again. Credentials
-remain in the active worker's memory for retries without repeated unlock prompts.
-If the login server rejects the account/password pair, retries stop and the app
-asks you to check the login details. Other connection failures retain automatic
-retries. **Disconnect** asks for confirmation, then stops that worker before another
-session can start.
-
-Background connections are best effort. Switching apps, locking the screen, or
-losing window focus does not deliberately disconnect the session or cancel a
-connection attempt. Android starts a foreground service with an ongoing connection
-notification when you log in. Its **Stop** action disconnects directly through
-Rust, even with the chat screen hidden. The service and wake lock end after the
-network worker closes. Android 13+ asks for notification permission; denying it
-still allows the service, but hides the notification and its Stop action. Use
-the app's **Disconnect** button or the notification's **Stop** for a clean logout;
-explicit app exit or removing it from Recents also requests shutdown.
-Android's Active apps Stop control terminates the process without a clean logout.
-
-Rust buffers up to 1,500 chat records while the webview is hidden, then delivers
-them when you return. Android battery restrictions can still interrupt networking.
-iOS keeps the existing best-effort behavior; it has no equivalent service for an
-indefinitely running chat connection. See the
-[platform details and testing notes](src-tauri/session-service/README.md).
-
-The OS may suspend networking or terminate the app. If the process survives,
-the same worker can resume and retry a lost connection when allowed to run.
-After process termination, reopen the app and unlock the saved login or enter
-your credentials again.
-This version does not request extra iOS background execution time.
-Physical-device background duration and lifecycle behavior still need testing on
-both platforms; continuous logging is not guaranteed. See the
-[Android process lifecycle](https://developer.android.com/guide/components/activities/process-lifecycle)
-and [iOS background execution documentation](https://developer.apple.com/documentation/uikit/extending-your-app-s-background-execution-time).
-
-See the [roadmap](ROADMAP.md) for platform validation, chat UI improvements, and
-background connection work.
-
-## Reading, history, and alerts
-
-The Settings tab contains text sizes from 12–22, compact spacing (on by default), and an optional
-higher-contrast palette. Classic EQ colors remain the default. Item details use
-a bottom sheet on phones and a centered dialog on larger screens. Android system
-bars use light icons on a dark background; layout respects the keyboard and safe areas.
-
-Unread incoming messages appear in the Chat badge, with a separate shortcut for
-unread tells. Scrolling away from the bottom stops automatic following; **Latest
-messages** shows a count when new messages arrive. A divider marks the new-message
-boundary. Filters do not mark hidden messages read. Unread counts are session-only
-and are not restored with saved history.
-
-Swipe another player's message in either direction to compose a tell. Your own
-messages have no swipe/reply action, but can still be copied or shared. Long-press a message
-to copy, share, reply, or mute the author. Tapping outside the popup dismisses it.
-Screen readers can use the message action control; keyboard focus reveals that
-control without adding buttons to every visible row. Muted messages are hidden
-and cannot trigger alerts, but are still kept in enabled history. Unmute authors
-in Settings. Your own messages are labeled **You**, and the composer identifies a
-tell's recipient explicitly.
-
-A small clock at the bottom-right of your outgoing message indicates **Sending**;
-a checkmark means **Sent**, confirmed by the server. It is not a read receipt.
-After 15 seconds without confirmation, an amber clock indicates **Unconfirmed**;
-this does not mean the send failed. A failed submission has a warning icon and
-retains its draft for retry. Icons have accessible labels and descriptive tooltips.
-A tell to yourself can produce both a received tell and a sent confirmation; the
-UI pairs these into one row while preserving both underlying records. Separate
-repeated sends remain separate.
-Connection interruptions and resumptions insert timeline notices about possible
-message gaps. These UI markers are separate from the game's chat records.
-
-**Save chat on this device** is off by default. When enabled, Rust writes structured
-chat to a separate SQLite database before buffering it for the UI, including while
-Android's WebView is hidden. Choose 1, 7, or 30 days and 1,000, 5,000, or 10,000 messages
-per character/server; an additional 20,000-message device limit applies. Retention
-is enforced when the store is used, not by waking an inactive app. Turning saving
-off stops new writes without deleting existing history. **Clear saved history**
-removes it for every character after confirmation. Live chat continues if storage fails.
-
-History contains player names and message content; it is not protected by the
-credential vault's biometric lock. Credentials never enter the history database.
-Saved history can be viewed while disconnected and loads before a new login when
-saving is enabled. The chat view keeps the latest 1,500 records; exports include
-all retained records for the selected character. Text export is readable; JSONL
-preserves original item-link bodies, IDs, decoded ranges, and formatted-message
-arguments. Both use the Android/iOS share sheet. Exports are capped at 20 MB;
-reduce retention if that limit is reached. Shared copies are outside the app's
-history retention controls.
-
-Optional Android alerts cover incoming tells, guild messages, or up to 20
-comma-separated keywords. They run only while the app is backgrounded and the
-native session receives a matching message. Muted authors and your own messages
-are excluded; alerts are rate-limited to one every two seconds. Previews are off
-by default. Lock-screen public notices omit sender and text. Android notification
-permissions, channel settings, and device policy still control presentation.
-Use **Test notification** while disconnected to check permission and presentation
-without starting a game session.
-These are local notifications, not push delivery: they cannot receive messages
-after Android kills or suspends networking. The Notifications section appears only on supported platforms.
-
-About includes the version, build identifier, networking revision, source and issue
-links, [component notices](DEPENDENCIES.md), and data credits. **Export diagnostics**
-uses an explicit allowlist of versions, platform, counters, and storage status.
-It excludes credentials, character names, chat text, keywords, raw packets, and
-local file paths. Sharing chat and sharing diagnostics are separate actions.
+See the [user guide](docs/USER_GUIDE.md) for saved characters, history and exports,
+notifications, and troubleshooting. [Privacy](PRIVACY.md) explains what stays on
+your device.
 
 ## Development
+
+The native app uses Tauri 2, React, and the
+[reusable Rust P99 client](https://github.com/rm-you/p99-logger-client). It connects
+directly to the game servers. Android is the distributed release; the repository
+also includes iOS source, which requires separate platform validation. See the
+[roadmap](ROADMAP.md) for remaining work.
 
 Install Node.js 24, the Rust toolchain pinned in `rust-toolchain.toml`, and the
 [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/), then:
@@ -323,3 +157,8 @@ Secure storage implementation references:
 [Android authentication-bound keys](https://developer.android.com/identity/sign-in/biometric-auth#auth-per-use-keys)
 and [Apple Keychain access control](https://developer.apple.com/documentation/localauthentication/accessing-keychain-items-with-face-id-or-touch-id).
 The iOS implementation still requires an Xcode build and device validation.
+
+## License
+
+The app's own code is [MIT licensed](LICENSE). Dependencies and the bundled item
+snapshot retain their original terms; see [component and data notices](DEPENDENCIES.md).
