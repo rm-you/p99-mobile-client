@@ -27,15 +27,15 @@ def main():
     bundle = info["CFBundleIdentifier"]
     if not (app / "PrivacyInfo.xcprivacy").is_file():
         raise RuntimeError("App privacy manifest was not packaged")
-    # Supply a disposable Simulator identity for Keychain metadata access.
-    # This ad-hoc identity is never applied to a device IPA.
+    # Keychain's simulated identity is embedded at link time by prepare_ios.py.
+    # The Mac host signature gets only its normal debugging entitlement.
     entitlements = output / "simulator.entitlements"
     entitlements.write_bytes(plistlib.dumps({
-        "application-identifier": "P99SIMTEST." + bundle,
-        "keychain-access-groups": ["P99SIMTEST." + bundle],
-        "com.apple.developer.team-identifier": "P99SIMTEST",
+        "com.apple.security.get-task-allow": True,
     }))
-    subprocess.run(["codesign", "--force", "--sign", "-", "--entitlements", str(entitlements), str(app)], check=True)
+    subprocess.run(["codesign", "--force", "--sign", "-", "--generate-entitlement-der",
+                    "--entitlements", str(entitlements), str(app)], check=True)
+    subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True)
     runtimes = json.loads(simctl("list", "runtimes", "--json"))["runtimes"]
     runtime = next(
         r for r in reversed(runtimes)

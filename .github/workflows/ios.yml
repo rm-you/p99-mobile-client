@@ -48,7 +48,7 @@ jobs:
       - name: Build complete Simulator application
         run: |
           npm run tauri -- ios init --ci
-          python3 scripts/prepare_ios.py
+          python3 scripts/prepare_ios.py --simulator
           swift package --package-path src-tauri/secure-login/ios dump-package > /dev/null
           swift package --package-path src-tauri/session-service/ios dump-package > /dev/null
           npm run tauri -- ios build --ci --target aarch64-sim --no-sign

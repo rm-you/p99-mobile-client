@@ -26,6 +26,9 @@ def verify(path, build_number=None, signed=False):
             raise ValueError("Face ID purpose string is missing")
         if root + "/PrivacyInfo.xcprivacy" not in archive.namelist():
             raise ValueError("App privacy manifest is missing")
+        executable = root + "/" + info["CFBundleExecutable"]
+        if b"P99SIMTEST" in archive.read(executable):
+            raise ValueError("Simulator test identity leaked into the device executable")
         if signed:
             if root + "/embedded.mobileprovision" not in archive.namelist():
                 raise ValueError("Provisioning profile is missing")

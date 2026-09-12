@@ -87,6 +87,13 @@ mechanism. Bounded background time can finish an in-flight save or other finite 
 it cannot guarantee an always-connected chat session. See
 [Apple's background execution guidance](https://developer.apple.com/forums/thread/685525).
 
+Background `URLSession` transfers are HTTP/HTTPS uploads and downloads handled by
+the OS. They cannot run the EverQuest UDP protocol or its acknowledgments and
+keepalives. This is not a TCP-only restriction: HTTP/3 uses QUIC over UDP, but
+custom `URLProtocol` handlers are explicitly unavailable in background sessions.
+See [Apple's networking API guide](https://developer.apple.com/documentation/technotes/tn3151-choosing-the-right-networking-api)
+and [custom protocol restrictions](https://developer.apple.com/documentation/foundation/urlsessionconfiguration/protocolclasses).
+
 iOS 26 adds `BGContinuedProcessingTask`, including network-capable work. Apple describes
 user-started tasks with measurable progress and a clear completion condition.
 An indefinite chat listener does not fit that model; this is our assessment of its

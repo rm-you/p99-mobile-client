@@ -21,8 +21,9 @@ artifacts expire after seven days.
 The `ios-unsigned-device-<commit>` artifact is an **unsigned IPA**, not a TestFlight
 or directly installable distribution build. It is a candidate for local re-signing
 with AltStore Classic; that installation path requires separate device validation.
-The Simulator uses a disposable ad-hoc signing identity to exercise Keychain
-metadata access. That identity is never applied to device candidates.
+The Simulator embeds a disposable test identity for Keychain metadata access,
+separate from its ad-hoc Mac host signature. Simulator-only linker settings keep
+that identity out of device candidates.
 
 On a Mac, the equivalent build steps are:
 
@@ -30,7 +31,7 @@ On a Mac, the equivalent build steps are:
 npm ci
 rustup target add aarch64-apple-ios aarch64-apple-ios-sim
 npm run tauri -- ios init --ci
-python3 scripts/prepare_ios.py
+python3 scripts/prepare_ios.py --simulator
 npm run tauri -- ios build --ci --target aarch64-sim --no-sign
 python3 scripts/ios_smoke.py
 npm run tauri -- ios build --ci --target aarch64 --no-sign
