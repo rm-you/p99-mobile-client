@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
   workflow_call:
+    inputs:
+      source_ref:
+        description: Commit to check for a release retry
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -14,6 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_ref }}
       - name: Verify original item snapshot
         run: python3 scripts/import_items.py --check
       - name: Test release validation
@@ -34,6 +42,8 @@ jobs:
         working-directory: src-tauri
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_ref }}
       - uses: actions/setup-node@v7
         with:
           node-version: 24
