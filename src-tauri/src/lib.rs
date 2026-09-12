@@ -1,14 +1,19 @@
 mod background;
 mod delivery;
+mod experience;
+mod history;
 mod items;
+mod outgoing;
 mod profiles;
 mod session;
 mod settings;
+mod support;
 use tauri_plugin_opener::OpenerExt;
 
 use background::{BackgroundControl, BackgroundSession};
+use outgoing::{SendChatRequest, SendFailure};
 use profiles::{validate_id, validate_unlocked, ProfileOperations, SaveProfile};
-use session::{AppEvent, ConnectRequest, SessionController};
+use session::{AppEvent, ConnectRequest, Server, SessionController};
 use settings::{Settings, SettingsStore};
 use std::sync::Arc;
 use tauri::{ipc::Channel, Manager, State};
@@ -37,9 +42,38 @@ fn start_session(
     let control = app.state::<Arc<BackgroundControl>>().inner().clone();
     let delivery = control.clone();
     let worker_app = app.clone();
+    let history_app = app.clone();
+    let owner = history::HistoryOwner {
+        server: match request.server {
+            Server::Green => "green",
+            Server::Blue => "blue",
+        }
+        .into(),
+        character: request.character.trim().into(),
+    };
     app.state::<Arc<SessionController>>().start_with(
         request,
         move |event| {
+            if let AppEvent::Client(ref message) = event {
+                let store=history_app.state::<history::ChatStore>();
+                match message {
+                    p99_logger_client::client::ClientEvent::Record(record) => {
+                        if let Ok(value)=serde_json::to_value(record) {
+                            match store.record(&owner, &value, delivery.delivery.is_hidden()) {
+                                Ok(recorded) => {
+                                    if let Some(alert) = recorded.alert {
+                                        history_app.state::<tauri_plugin_session_service::SessionService<tauri::Wry>>().alert_chat(&alert.title, &alert.body);
+                                    }
+                                    if recorded.history_failed { delivery.delivery.publish(AppEvent::HistoryError); }
+                                }
+                                Err(_) => delivery.delivery.publish(AppEvent::HistoryError),
+                            }
+                        }
+                    }
+                    p99_logger_client::client::ClientEvent::Reconnecting{..}=>store.reconnect(),
+                    _=>{}
+                }
+            }
             delivery.delivery.publish(event);
             Ok(())
         },
@@ -188,8 +222,13 @@ fn load_settings(store: State<'_, SettingsStore>) -> Result<Settings, String> {
 
 /// Persist only the typed nonsecret settings fields.
 #[tauri::command]
-fn save_settings(settings: Settings, store: State<'_, SettingsStore>) -> Result<(), String> {
-    store.save(settings)
+fn save_settings(
+    settings: Settings,
+    store: State<'_, SettingsStore>,
+    chat: State<'_, history::ChatStore>,
+) -> Result<(), String> {
+    store.save(settings.clone())?;
+    chat.configure(settings.experience)
 }
 
 /// Read bundled item facts without accessing the network or account context.
@@ -217,6 +256,15 @@ async fn disconnect(state: State<'_, Arc<SessionController>>) -> Result<(), Stri
         .map_err(|_| "Unable to stop session task")?
 }
 
+/// Submit one validated message to the currently connected character's bounded queue.
+#[tauri::command]
+fn send_chat(
+    request: SendChatRequest,
+    state: State<'_, Arc<SessionController>>,
+) -> Result<(), SendFailure> {
+    state.outbox.send(request)
+}
+
 /// Complement native Android visibility callbacks and replay on iOS/webview resume.
 #[tauri::command]
 fn set_chat_visible(visible: bool, control: State<'_, Arc<BackgroundControl>>) {
@@ -237,15 +285,20 @@ pub fn run() {
         .manage(control)
         .manage(ProfileOperations::default())
         .setup(|app| {
-            app.manage(SettingsStore::new(
-                app.path().app_config_dir()?.join("settings.json"),
+            let settings = SettingsStore::new(app.path().app_config_dir()?.join("settings.json"));
+            let preferences = settings.load().unwrap_or_default();
+            app.manage(history::ChatStore::new(
+                app.path().app_local_data_dir()?.join("chat-history.sqlite"),
+                preferences.experience,
             ));
+            app.manage(settings);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             connect,
             connect_saved,
             disconnect,
+            send_chat,
             set_chat_visible,
             credential_status,
             save_profile,
@@ -254,7 +307,17 @@ pub fn run() {
             load_settings,
             save_settings,
             item_details,
-            open_item_wiki
+            open_item_wiki,
+            support::history_profiles,
+            support::load_history,
+            support::clear_history,
+            support::export_history,
+            support::share_document,
+            support::copy_message,
+            support::app_info,
+            support::test_notification,
+            support::export_diagnostics,
+            support::open_info_link
         ])
         .build(tauri::generate_context!())
         .expect("Unable to initialize P99 Mobile Chat")

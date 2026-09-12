@@ -44,6 +44,8 @@ pub struct Settings {
     #[serde(default, rename = "filters_open", skip_serializing)]
     _legacy_filters_open: bool,
     pub follow: bool,
+    #[serde(default)]
+    pub experience: crate::experience::Experience,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -54,11 +56,13 @@ impl Default for Settings {
             channels: ChatChannel::ALL.to_vec(),
             _legacy_filters_open: false,
             follow: true,
+            experience: crate::experience::Experience::default(),
         }
     }
 }
 impl Settings {
     fn validate(&self) -> Result<(), String> {
+        self.experience.validate()?;
         if self.version != 2
             || self._legacy_character.len() >= 64
             || self._legacy_character.contains('\0')

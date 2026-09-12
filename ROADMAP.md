@@ -8,7 +8,7 @@ offer to save when a manual connection starts; tap a saved character to unlock
 and connect; edit/delete controls and swipe-to-delete confirmation; migration from
 the previous single-login entry; reconnect without repeated unlock prompts.
 Confirmed credential rejections stop retries and show an actionable error. Manual
-character names are not restored or persisted outside saved profiles.
+character names are not restored into the form. Opt-in chat history is also indexed by character and server.
 No plaintext credential storage or decrypted password return to the webview.
 
 Validation:
@@ -52,7 +52,7 @@ Implemented: an Android foreground service with an ongoing connection notificati
 native Stop action, session-scoped wake lock, and bounded native chat buffering
 while the webview is hidden. Permission denial does not prevent login; the app
 explains when notification controls or foreground support are unavailable.
-The plugin is Android-only and preserves iOS best-effort behavior without adding
+The foreground service is Android-only and preserves iOS best-effort behavior without adding
 unsupported background modes. See the [implementation notes](src-tauri/session-service/README.md).
 
 An Android emulator test kept the same P99 session connected for two minutes
@@ -61,5 +61,68 @@ The notification's Stop action worked while the app was hidden, released the
 service and wake lock, and delivered the final state when the UI resumed.
 
 Remaining: physical-device battery/Doze testing, reconnect and process-termination
-validation, Google Play foreground-service declaration review if distributed there,
-and iOS/Xcode validation. iOS has no equivalent always-on socket service.
+validation, and iOS/Xcode validation. iOS has no equivalent always-on socket service.
+
+## 4. Send chat and reply to tells
+
+Implemented: a channel selector, a one-to-four-line text box, and an icon Send
+button. Say, Tell, Guild, Auction, OOC, and Shout use the networking crate's typed
+outbound commands. A swipe in either direction selects the
+message author for a Tell, regardless of its original channel, without sending. Drafts persist across tab switches and failed
+submissions, and clear for a new login. Multiline input sends as one message with
+spaces replacing line breaks.
+
+Sent-tell echoes on P99 channel 14 display and filter as Tell, including records
+from networking crate versions that label that channel unknown.
+
+Native input validation checks message byte limits, recipient names, connection
+health, and session identity. The bounded command queue drops pending messages
+on disconnect and never replays them after reconnect. Unit tests cover the native
+queue, UI submission, draft retention, and swipe-versus-scroll behavior. No new
+iOS-specific APIs are required; iOS packaging still needs Xcode validation.
+
+Android emulator validation includes the native keyboard staying below a
+four-line tell draft, a real swipe selecting the reply recipient, and one Say
+message echoed by P99 through the normal connection. The app disconnects cleanly
+after testing. Other outbound channels have typed-command tests but have not
+been sent from the mobile app in live testing.
+
+## 5. Reading, history, and support polish
+
+Implemented: adjustable text size, compact spacing, higher-contrast colors,
+quieter metadata, native dark system bars, phone bottom sheets, and larger action
+targets. Incoming unread counts, unread tells, new-message dividers, and a counted
+Latest control complement the existing channel filters. Long-press opens the message menu, with a keyboard/screen-reader action control.
+The menu supports copy, native sharing, reply, and mute; own messages read **You**.
+
+Implemented: explicit tell destinations; submitted/echoed/failed/unconfirmed
+feedback; reconnect timeline notices; opt-in per-character SQLite history with
+age/count limits; restart loading, clear confirmation, and text/JSONL exports.
+The complete structured item-link data is preserved. Muting does not destroy history.
+
+Implemented: optional native Android tell, guild, and keyword alerts with private
+lock-screen notices and optional previews. iOS provides copy/share controls, but
+no chat alerts or persistent background service. About provides version/build
+information, credits, source links, and sanitized diagnostic exports.
+
+Validation: synthetic frontend and Rust tests cover history isolation/retention,
+settings migration, notification matching/privacy, export structure, message
+actions, unread filtering, and send-echo correlation. Platform packaging and
+emulator checks are recorded separately from live P99 or physical-device tests.
+Remaining: physical Android notification/lock-screen and accessibility checks;
+Xcode build and real iOS sharing, appearance, and device-lifecycle validation.
+
+## 6. Direct Android 1.0 release
+
+Prepared: synchronized app versions and Android versionCode; permanent production
+signing identity; new-tag-only GitHub release workflow with checks, signing,
+certificate/packaging verification, and public checksums/build metadata. The
+release is an ARM64 APK and does not use Google Play. Installation, migration,
+privacy, license, and maintainer release instructions are included.
+
+The user reports that another tester confirmed basic functionality on a prior
+physical-phone build. The current candidate's physical-device testing is being
+handled separately. No 1.0 tag is created as part of preparation. Remaining before
+broad publication: current-candidate device results and an independent signing-key
+backup. The maintainer has resolved the licensing review and accepted item-data
+redistribution with attribution.

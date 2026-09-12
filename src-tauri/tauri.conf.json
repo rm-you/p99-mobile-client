@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "P99 Mobile Chat",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "identifier": "io.github.rmyou.p99mobile",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "npm run icons:sync && npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run icons:sync && npm run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -32,6 +32,9 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "android": {
+      "versionCode": 1000000
+    }
   }
 }

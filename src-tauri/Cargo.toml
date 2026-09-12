@@ -4,9 +4,10 @@ resolver = "2"
 
 [package]
 name = "p99-mobile-client"
-version = "0.1.0"
-description = "Project 1999 mobile chat viewer"
+version = "1.0.0"
+description = "Project 1999 mobile chat client"
 edition = "2021"
+license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

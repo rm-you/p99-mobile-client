@@ -10,8 +10,14 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
+import { defaultExperience } from "./experience";
 import { CHANNELS } from "./protocol";
-import type { AppEvent, ClientEvent, SessionStatus } from "./protocol";
+import type {
+  AppEvent,
+  ClientEvent,
+  SessionStatus,
+  ChatRecord,
+} from "./protocol";
 
 const profile = {
   id: "12345678-1234-4234-8234-123456789abc",
@@ -49,6 +55,16 @@ beforeEach(() => {
     this.removeAttribute("open");
   };
   native.invoke.mockReset().mockImplementation((command: string, args: any) => {
+    if (command === "history_profiles" || command === "load_history")
+      return Promise.resolve([]);
+    if (command === "app_info")
+      return Promise.resolve({
+        version: "test",
+        build_id: "test",
+        network_revision: "synthetic",
+        platform: "android",
+        notifications_supported: true,
+      });
     if (command === "load_settings")
       return Promise.resolve({
         version: 2,
@@ -158,16 +174,26 @@ it("reports limited background support without ending the session", async () => 
 });
 
 it("tells native code when the chat view is hidden or resumed", async () => {
-  render(<App />);
+  const visibility = vi
+    .spyOn(document, "visibilityState", "get")
+    .mockReturnValue("visible");
+  const view = render(<App />);
   await screen.findByRole("button", { name: "Login" });
-  const visibility = vi.spyOn(document, "visibilityState", "get");
+  expect(native.invoke).toHaveBeenCalledWith("set_chat_visible", {
+    visible: true,
+  });
   visibility.mockReturnValue("hidden");
   fireEvent(document, new Event("visibilitychange"));
   expect(native.invoke).toHaveBeenCalledWith("set_chat_visible", {
     visible: false,
   });
+  // Reload while native delivery is paused: mounting must restore visibility
+  // even when no visibilitychange event accompanies the new document.
+  view.unmount();
+  native.invoke.mockClear();
   visibility.mockReturnValue("visible");
-  fireEvent(document, new Event("visibilitychange"));
+  render(<App />);
+  await screen.findByRole("button", { name: "Login" });
   expect(native.invoke).toHaveBeenCalledWith("set_chat_visible", {
     visible: true,
   });
@@ -265,7 +291,7 @@ describe("connection and chat", () => {
       "The login account or password was rejected. Check your login details and try again.",
     );
     expect(
-      screen.getByRole("heading", { name: "Manual connection", level: 2 }),
+      screen.getByRole("heading", { name: "New connection", level: 2 }),
     ).toBeTruthy();
     expect(screen.getByText("Offline", { exact: true })).toBeTruthy();
     expect(screen.queryByRole("progressbar")).toBeNull();
@@ -802,4 +828,280 @@ describe("connection and chat", () => {
     expect(screen.getByText("No messages yet")).toBeTruthy();
     expect(screen.getByText("0 messages")).toBeTruthy();
   });
+});
+
+it("sends through the current session and privately replies to public chat without sending automatically", async () => {
+  await connect();
+  const status: SessionStatus = {
+    state: "connected",
+    zone: "ecommons",
+    session_id: "synthetic-send-session",
+    timestamp: Date.now() / 1000,
+    last_received_seconds: 0,
+    packets: 1,
+    messages: 0,
+  };
+  send({ type: "status", data: status });
+  send({
+    type: "record",
+    data: {
+      type: "chat",
+      timestamp: "2026-01-01T00:00:00Z",
+      server: "Example server",
+      character: "ExampleCharacter",
+      zone: "ecommons",
+      session_id: status.session_id,
+      message_id: 1,
+      channel_name: "auction",
+      sender: "ExampleFriend",
+      target: "ExampleCharacter",
+      text: "Example auction",
+    },
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Actions for ExampleFriend message" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Tell ExampleFriend" }));
+  expect(
+    (screen.getByLabelText("Tell recipient") as HTMLInputElement).value,
+  ).toBe("ExampleFriend");
+  expect(
+    native.invoke.mock.calls.filter(([name]) => name === "send_chat"),
+  ).toHaveLength(0);
+  fireEvent.change(screen.getByLabelText("Message"), {
+    target: { value: "example reply" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  await waitFor(() =>
+    expect(native.invoke).toHaveBeenCalledWith("send_chat", {
+      request: {
+        session_id: status.session_id,
+        message: {
+          channel: "tell",
+          recipient: "ExampleFriend",
+          text: "example reply",
+        },
+      },
+    }),
+  );
+  // Only server records appear in the log; enqueueing does not fake a delivered echo.
+  expect(screen.getAllByText("Example auction")).toHaveLength(1);
+  expect(screen.queryByText("example reply")).toBeNull();
+  send({
+    type: "reconnecting",
+    data: { error: "synthetic transport failure", delay_seconds: 5 },
+  });
+  fireEvent.change(screen.getByLabelText("Message"), {
+    target: { value: "keep draft" },
+  });
+  expect(
+    (screen.getByRole("button", { name: "Send message" }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Connection" }));
+  fireEvent.click(screen.getByRole("button", { name: "Chat" }));
+  expect((screen.getByLabelText("Message") as HTMLTextAreaElement).value).toBe(
+    "keep draft",
+  );
+});
+
+function sampleRecord(id: number, extra: Partial<ChatRecord> = {}): ChatRecord {
+  return {
+    type: "chat",
+    timestamp: new Date().toISOString(),
+    server: "green",
+    character: "ExampleCharacter",
+    zone: "ecommons",
+    session_id: "synthetic-status",
+    message_id: id,
+    sender: "ExampleFriend",
+    channel_name: "tell",
+    text: `Synthetic message ${id}`,
+    ...extra,
+  };
+}
+it("counts unread incoming messages across tabs, shows tells, and reads only selected channels", async () => {
+  await connect();
+  fireEvent.click(screen.getByRole("button", { name: "Connection" }));
+  send({ type: "record", data: sampleRecord(1) });
+  send({ type: "record", data: sampleRecord(2, { channel_name: "auction" }) });
+  send({
+    type: "record",
+    data: sampleRecord(3, { sender: "ExampleCharacter" }),
+  });
+  expect(screen.getByLabelText("2 unread messages")).toBeTruthy();
+  fireEvent.click(
+    screen.getByRole("button", { name: /Chat.*unread messages/ }),
+  );
+  expect(screen.queryByLabelText("2 unread messages")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "tell", hidden: true }));
+  send({ type: "record", data: sampleRecord(4) });
+  expect(screen.getByLabelText("1 unread messages")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "1 unread tell" }));
+  expect(screen.queryByLabelText("1 unread messages")).toBeNull();
+  expect(screen.getByText("Synthetic message 4")).toBeTruthy();
+});
+it("persists appearance and history options without copying login details into preferences", async () => {
+  await connect();
+  fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+  fireEvent.click(screen.getByLabelText("Save chat on this device"));
+  fireEvent.click(screen.getByLabelText("Compact chat spacing"));
+  fireEvent.change(screen.getByLabelText("Chat text size"), {
+    target: { value: "12" },
+  });
+  await waitFor(() =>
+    expect(native.invoke).toHaveBeenCalledWith("save_settings", {
+      settings: expect.objectContaining({
+        experience: expect.objectContaining({
+          history_enabled: true,
+          compact: false,
+          text_size: 12,
+        }),
+      }),
+    }),
+  );
+  const saves = native.invoke.mock.calls.filter(
+    ([command]) => command === "save_settings",
+  );
+  expect(JSON.stringify(saves)).not.toMatch(/EXAMPLE_PASSWORD|EXAMPLE_ACCOUNT/);
+});
+it("copies from message actions and mutes without deleting history or sending chat", async () => {
+  await connect();
+  send({ type: "record", data: sampleRecord(1) });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Actions for ExampleFriend message" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Copy message" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(native.invoke).toHaveBeenCalledWith(
+    "copy_message",
+    expect.objectContaining({ text: "Synthetic message 1" }),
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Actions for ExampleFriend message" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Mute ExampleFriend" }));
+  expect(screen.queryByText("Synthetic message 1")).toBeNull();
+  expect(
+    native.invoke.mock.calls.some(
+      ([command]) => command === "send_chat" || command === "clear_history",
+    ),
+  ).toBe(false);
+  fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+  fireEvent.click(screen.getByRole("button", { name: "Unmute ExampleFriend" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Chat/ }));
+  expect(screen.getByText("Synthetic message 1")).toBeTruthy();
+});
+it("loads history before login and keeps incoming messages without marking history unread", async () => {
+  const fallback = native.invoke.getMockImplementation()!;
+  native.invoke.mockImplementation(async (command: string, args: any) => {
+    if (command === "load_settings")
+      return {
+        ...(await fallback(command, args)),
+        experience: { ...defaultExperience, history_enabled: true },
+      };
+    if (command === "load_history")
+      return [sampleRecord(1, { session_id: "old-session" })];
+    if (command === "connect") {
+      args.onEvent.onmessage({
+        type: "client",
+        data: { type: "record", data: sampleRecord(2) },
+      });
+    }
+    return fallback(command, args);
+  });
+  await connect();
+  expect(screen.getByText("Synthetic message 1")).toBeTruthy();
+  expect(screen.getByText("Synthetic message 2")).toBeTruthy();
+  expect(screen.queryByLabelText(/unread messages/)).toBeNull();
+  const calls = native.invoke.mock.calls.map(([name]) => name);
+  expect(calls.indexOf("load_history")).toBeLessThan(calls.indexOf("connect"));
+});
+it("shows submitted versus echoed feedback and records reconnect gaps", async () => {
+  await connect();
+  send({ type: "status", data: sessionStatus("connected") });
+  fireEvent.change(screen.getByLabelText("Message"), {
+    target: { value: "Synthetic reply" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  await screen.findByText("say · Submitted");
+  send({
+    type: "record",
+    data: sampleRecord(1, {
+      sender: "ExampleCharacter",
+      channel_name: "say",
+      text: "Synthetic reply",
+    }),
+  });
+  expect(screen.getByText("say · Server echo received")).toBeTruthy();
+  expect(screen.getByText("You")).toBeTruthy();
+  send({
+    type: "reconnecting",
+    data: { error: "synthetic", delay_seconds: 15 },
+  });
+  send({ type: "status", data: sessionStatus("connected") });
+  expect(screen.getByText(/Connection interrupted. Reconnecting/)).toBeTruthy();
+  expect(screen.getByText(/Reconnected. Messages during/)).toBeTruthy();
+});
+
+it("hides unsupported notification settings without mentioning other platforms", async () => {
+  const fallback = native.invoke.getMockImplementation()!;
+  native.invoke.mockImplementation((command: string, args: any) =>
+    command === "app_info"
+      ? Promise.resolve({
+          version: "test",
+          build_id: "test",
+          network_revision: "synthetic",
+          platform: "ios",
+          notifications_supported: false,
+        })
+      : fallback(command, args),
+  );
+  render(<App />);
+  await screen.findByRole("button", { name: "Login" });
+  fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+  await screen.findByText(/Networking syntheti/);
+  expect(screen.queryByRole("heading", { name: "Notifications" })).toBeNull();
+  expect(screen.queryByText(/alerts are not available/)).toBeNull();
+});
+
+it("does not start a login after disconnecting during history loading", async () => {
+  let finishHistory!: (records: ChatRecord[]) => void;
+  const fallback = native.invoke.getMockImplementation()!;
+  native.invoke.mockImplementation(async (command: string, args: any) => {
+    if (command === "load_settings")
+      return {
+        ...(await fallback(command, args)),
+        experience: { ...defaultExperience, history_enabled: true },
+      };
+    if (command === "load_history")
+      return new Promise<ChatRecord[]>((resolve) => {
+        finishHistory = resolve;
+      });
+    return fallback(command, args);
+  });
+  render(<App />);
+  await screen.findByRole("button", { name: "Login" });
+  fireEvent.change(screen.getByLabelText("Login account"), {
+    target: { value: "EXAMPLE_ACCOUNT" },
+  });
+  fireEvent.change(screen.getByLabelText("Password"), {
+    target: { value: "EXAMPLE_PASSWORD" },
+  });
+  fireEvent.change(screen.getByLabelText("Character name"), {
+    target: { value: "ExampleCharacter" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Login" }));
+  await waitFor(() => expect(finishHistory).toBeTypeOf("function"));
+  fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+  fireEvent.click(
+    within(screen.getByRole("dialog")).getByRole("button", {
+      name: "Disconnect",
+    }),
+  );
+  await screen.findByRole("button", { name: "Login" });
+  await act(async () => finishHistory([]));
+  expect(
+    native.invoke.mock.calls.some(([command]) => command === "connect"),
+  ).toBe(false);
 });

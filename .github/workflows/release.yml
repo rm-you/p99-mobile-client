@@ -1,0 +1,102 @@
+name: Android release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    # Moving or deleting a tag must not produce a different APK under its old name.
+    if: github.event.created == true && github.event.deleted == false
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require reviewed main history
+        run: git merge-base --is-ancestor HEAD origin/main
+      - name: Validate release tag and sources
+        id: version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python3 scripts/release.py check "$RELEASE_TAG" --github-output "$GITHUB_OUTPUT"
+
+  checks:
+    needs: validate
+    uses: ./.github/workflows/checks.yml
+
+  release:
+    needs: [validate, checks]
+    runs-on: ubuntu-24.04
+    environment: android-release
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+      RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+      NDK_VERSION: 29.0.14206865
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.13.0
+          cache: npm
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;$NDK_VERSION"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+          rustup show active-toolchain
+      - name: Build ARM64 release APK
+        run: |
+          npm ci
+          npm run tauri -- android init --ci
+          npm run tauri -- android build --target aarch64 --apk --split-per-abi
+          git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
+      - name: Sign and verify production APK
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          umask 077
+          python3 scripts/release.py sign \
+            src-tauri/gen/android/app/build/outputs/apk/arm64/release/app-arm64-release-unsigned.apk \
+            "release-output/p99-mobile-chat-$RELEASE_VERSION-arm64.apk"
+      - name: Assemble release files
+        run: |
+          python3 scripts/release.py bundle "release-output/p99-mobile-chat-$RELEASE_VERSION-arm64.apk" "$RELEASE_TAG"
+          cp LICENSE DEPENDENCIES.md PRIVACY.md CHANGELOG.md release-output/
+          cp public/THIRD-PARTY-NOTICES.txt release-output/
+      - uses: actions/upload-artifact@v7
+        with:
+          name: p99-mobile-chat-${{ needs.validate.outputs.version }}-arm64
+          path: release-output/
+          if-no-files-found: error
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ needs.validate.outputs.prerelease }}
+        run: |
+          flags=()
+          if [[ "$PRERELEASE" == true ]]; then flags+=(--prerelease); fi
+          gh release create "$RELEASE_TAG" release-output/* \
+            --verify-tag --title "P99 Mobile Chat $RELEASE_VERSION" \
+            --notes-file CHANGELOG.md "${flags[@]}"

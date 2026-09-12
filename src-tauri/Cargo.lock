@@ -2512,7 +2512,7 @@ dependencies = [
 [[package]]
 name = "p99-logger-client"
 version = "0.1.0"
-source = "git+https://github.com/rm-you/p99-logger-client?branch=main#f710bfddf26a90ea7b7a5aa7349e5dd3a23b7fcc"
+source = "git+https://github.com/rm-you/p99-logger-client?branch=main#1ddbccac4b6f0d22e02f37b533f677c56204fee9"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2529,7 +2529,7 @@ dependencies = [
 
 [[package]]
 name = "p99-mobile-client"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "p99-logger-client",
