@@ -30,13 +30,10 @@ schema is preserved. See [data provenance and limitations](src-tauri/data/README
 Zone-name and default channel-color references are documented in
 [game data notes](src/game-data.md).
 
-The Planner describes itself as a free, open-source fan project and identifies
-the Wiki/PEQ sources, but its public About page does not state a specific license
-for redistributing the SQLite snapshot. Preserve the source attribution and
-confirm the snapshot's redistribution terms before the first broad release.
-The locked `p99-logger-client` source also has no explicit license declaration;
-it is maintained by this project's author and should receive an upstream license
-declaration. Neither omission is silently labeled MIT here.
+This project's maintainer has accepted redistribution of the bundled item
+snapshot with attribution. Keep its provenance and source credits with copies.
+Dependency license metadata in the bundled notices reflects the exact locked
+package versions; the networking crate's declaration is maintained upstream.
 
 The P99 speech-bubble artwork and its generation source are included in
 [icon source notes](src-tauri/icons/source/README.md).

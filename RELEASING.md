@@ -58,7 +58,8 @@ Signing secrets are exposed only to the signing step, after the build/checks pas
    from `src-tauri`, saving its output outside Git, then run
    `python3 scripts/collect_notices.py /path/to/metadata.json` after `npm ci`.
 5. Run checks, review the diff for sensitive data, and merge the version to `main`.
-   Complete the physical-device test and data/license review before publishing.
+   Complete the physical-device test before publishing. Preserve the component
+   notices and item-data attribution documented in `DEPENDENCIES.md`.
 
 ```sh
 python3 scripts/release.py check v1.0.0
@@ -118,8 +119,7 @@ deleting its data without planning the [one-time migration](INSTALLING.md).
 - Check privacy/backup behavior and accessibility with device settings actually
   used by testers. Prior-version basic functionality is useful evidence, but does
   not establish the newest candidate's behavior.
-- Confirm independent signing-key backups and the data/component terms described
-  in `DEPENDENCIES.md` and `src-tauri/data/README.md`.
+- Confirm independent signing-key backups.
 - Plan Android developer/app verification for broader direct distribution using
   the [Android Developer Console](https://developer.android.com/developer-verification/guides).
   This is separate from Play Store publication.

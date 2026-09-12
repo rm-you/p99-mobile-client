@@ -123,5 +123,6 @@ privacy, license, and maintainer release instructions are included.
 The user reports that another tester confirmed basic functionality on a prior
 physical-phone build. The current candidate's physical-device testing is being
 handled separately. No 1.0 tag is created as part of preparation. Remaining before
-broad publication: current-candidate device results, an independent signing-key
-backup, and the data/component license follow-ups in `DEPENDENCIES.md`.
+broad publication: current-candidate device results and an independent signing-key
+backup. The maintainer has resolved the licensing review and accepted item-data
+redistribution with attribution.

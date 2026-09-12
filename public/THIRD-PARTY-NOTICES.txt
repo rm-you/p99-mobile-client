@@ -17,7 +17,7 @@ Apache-2.0 text is included in the license-text collection below.
 The application and its local native plugins use the root MIT license.
 The offline item snapshot is separately attributed to P99 Gear Planner, Wermhat,
 the Project 1999 Wiki community, and EQEmu/PEQ. See DEPENDENCIES.md and
-src-tauri/data/README.md for provenance and unresolved redistribution terms.
+src-tauri/data/README.md for provenance and attribution.
 Game content and trademarks are not relicensed by the application MIT license.
 
 COMPONENTS
