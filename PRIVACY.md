@@ -32,7 +32,9 @@ Deleting a saved character removes its saved credentials and profile entry.
 Preferences such as channel filters, text size, and notification choices are saved
 locally. The current chat view keeps up to 1,500 records in memory.
 
-**Save chat on this device** is off by default. If enabled, a separate SQLite
+**Save chat on this device** is on by default when no saved preference exists.
+You can turn it off in Settings; updates preserve your existing choice.
+While enabled, a separate SQLite
 database retains messages, sender and character names, server identity,
 timestamps, and complete item-link data. It is protected by the app sandbox and
 device storage protection, not by the credential vault's biometric prompt.

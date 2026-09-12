@@ -96,11 +96,13 @@ as unavailable. See the [catalog notes](../src-tauri/data/README.md) for its sou
 
 ## History and exports
 
-**Save chat on this device** is off by default. Enable it in **Settings** to keep
-messages by character and server, including messages received in the background.
+**Save chat on this device** is on by default when no saved preference exists.
+It keeps messages by character and server, including messages received in the
+background. You can turn it off in **Settings**; updates preserve your existing choice.
 You can view saved history while disconnected; when saving is enabled, it also
 loads before a new login.
 
+The default keeps up to **7 days and 5,000 messages per character/server**.
 Choose a retention period of **1, 7, or 30 days** and a limit of **1,000, 5,000,
 or 10,000 messages per character/server**. A 20,000-message device limit also
 applies. Old messages are removed when history is used, without waking an inactive

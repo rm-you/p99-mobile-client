@@ -33,7 +33,7 @@ P99 uses your **EQEmulator login-server account**; Quarm uses your
 - **Reply:** swipe another player's message in either direction to send them a tell.
 - **Inspect items:** tap an item link for offline details. Quarm shows P99 reference
   stats, which may differ.
-- **Preferences:** use **Settings** for text size, optional chat history, and alerts.
+- **Preferences:** use **Settings** for text size, chat history (on by default), and optional alerts.
 
 The app tries to stay connected in the background, but Android's battery settings
 can interrupt it. Use **Disconnect** or **Stop** in the connection notification
@@ -112,7 +112,7 @@ build commands sync the committed icons into initialized Android/iOS projects.
   notification, and native Stop control; Android/iOS copy and share controls.
   Background-service methods remain no-ops on iOS/desktop.
 - `src-tauri/src/settings.rs` and `experience.rs`: validated, atomic writes of nonsecret preferences.
-- `src-tauri/src/history.rs`: opt-in SQLite retention and native alert matching.
+- `src-tauri/src/history.rs`: configurable SQLite retention and native alert matching.
 - `src-tauri/src/support.rs`: bounded history exports, sharing, and sanitized diagnostics.
 - `src/Preferences.tsx`, `MessageActions.tsx`, and `useUnread.ts`: appearance, history, alerts, message actions, and unread state.
 - `src-tauri/src/items.rs`: offline item lookup and safe Wiki browser URLs.

@@ -17,7 +17,7 @@ export const defaultExperience: Experience = {
   text_size: 16,
   compact: true,
   high_contrast: false,
-  history_enabled: false,
+  history_enabled: true,
   history_days: 7,
   history_limit: 5000,
   notify_tells: false,

@@ -1003,6 +1003,10 @@ it("counts unread incoming messages across tabs, shows tells, and reads only sel
 it("persists appearance and history options without copying login details into preferences", async () => {
   await connect();
   fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+  expect(
+    (screen.getByLabelText("Save chat on this device") as HTMLInputElement)
+      .checked,
+  ).toBe(true);
   fireEvent.click(screen.getByLabelText("Save chat on this device"));
   fireEvent.click(screen.getByLabelText("Compact chat spacing"));
   fireEvent.change(screen.getByLabelText("Chat text size"), {
@@ -1012,7 +1016,7 @@ it("persists appearance and history options without copying login details into p
     expect(native.invoke).toHaveBeenCalledWith("save_settings", {
       settings: expect.objectContaining({
         experience: expect.objectContaining({
-          history_enabled: true,
+          history_enabled: false,
           compact: false,
           text_size: 12,
         }),
@@ -1023,6 +1027,33 @@ it("persists appearance and history options without copying login details into p
     ([command]) => command === "save_settings",
   );
   expect(JSON.stringify(saves)).not.toMatch(/EXAMPLE_PASSWORD|EXAMPLE_ACCOUNT/);
+});
+it("keeps a saved history opt-out when connecting and loading preferences", async () => {
+  const fallback = native.invoke.getMockImplementation()!;
+  native.invoke.mockImplementation(async (command: string, args: any) => {
+    if (command === "load_settings")
+      return {
+        ...(await fallback(command, args)),
+        experience: { ...defaultExperience, history_enabled: false },
+      };
+    return fallback(command, args);
+  });
+  await connect();
+  expect(
+    native.invoke.mock.calls.some(([command]) => command === "load_history"),
+  ).toBe(false);
+  fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+  expect(
+    (screen.getByLabelText("Save chat on this device") as HTMLInputElement)
+      .checked,
+  ).toBe(false);
+  await waitFor(() =>
+    expect(native.invoke).toHaveBeenCalledWith("save_settings", {
+      settings: expect.objectContaining({
+        experience: expect.objectContaining({ history_enabled: false }),
+      }),
+    }),
+  );
 });
 it("copies from message actions and mutes without deleting history or sending chat", async () => {
   await connect();
@@ -1054,11 +1085,6 @@ it("copies from message actions and mutes without deleting history or sending ch
 it("loads history before login and keeps incoming messages without marking history unread", async () => {
   const fallback = native.invoke.getMockImplementation()!;
   native.invoke.mockImplementation(async (command: string, args: any) => {
-    if (command === "load_settings")
-      return {
-        ...(await fallback(command, args)),
-        experience: { ...defaultExperience, history_enabled: true },
-      };
     if (command === "load_history")
       return [sampleRecord(1, { session_id: "old-session" })];
     if (command === "connect") {

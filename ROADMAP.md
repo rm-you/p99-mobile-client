@@ -29,7 +29,7 @@ offer to save when a manual connection starts; tap a saved character to unlock
 and connect; edit/delete controls and swipe-to-delete confirmation; migration from
 the previous single-login entry; reconnect without repeated unlock prompts.
 Confirmed credential rejections stop retries and show an actionable error. Manual
-character names are not restored into the form. Opt-in chat history is also indexed by character and server.
+character names are not restored into the form. Configurable chat history is also indexed by character and server.
 No plaintext credential storage or decrypted password return to the webview.
 
 Validation:
@@ -121,7 +121,7 @@ The menu supports copy, native sharing, reply, and mute; own messages read **You
 and offer copy/share without self-reply gestures or actions.
 
 Implemented: explicit tell destinations; per-message pending, sent, failed, and
-unconfirmed icons; self-tell receive/confirmation pairing for display; reconnect timeline notices; opt-in per-character SQLite history with
+unconfirmed icons; self-tell receive/confirmation pairing for display; reconnect timeline notices; configurable per-character SQLite history with
 age/count limits; restart loading, clear confirmation, and text/JSONL exports.
 The complete structured item-link data is preserved. Muting does not destroy history.
 

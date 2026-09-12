@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Save chat on this device by default when no saved history preference exists,
+  with the existing seven-day and 5,000-message per-character/server limits.
+  Preserve saved on/off choices when upgrading; alerts remain off by default.
+
 ## P99 Mobile Chat 1.1.0
 
 - Show pending/sent indicators on each outgoing message, combine self-tell
