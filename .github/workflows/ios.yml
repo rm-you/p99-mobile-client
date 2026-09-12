@@ -11,29 +11,41 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ios-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   simulator:
+    # Opt in to expensive development-branch builds; PR/main checks still run normally.
+    if: github.event_name != 'push' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, '[ios-ci]')
     runs-on: macos-26
     timeout-minutes: 45
+    concurrency:
+      group: ios-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ios-${{ runner.arch }}-xcode26-${{ hashFiles('rust-toolchain.toml', 'src-tauri/Cargo.lock', 'package-lock.json') }}
       - name: Install build prerequisites
         run: |
           xcodebuild -version
           rustup target add aarch64-apple-ios aarch64-apple-ios-sim
           command -v xcodegen || brew install xcodegen
           npm ci
+          npm run format:check
+          npm test
+          python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Build complete Simulator application
         run: |
           npm run tauri -- ios init --ci
+          python3 scripts/prepare_ios.py
           npm run tauri -- ios build --ci --target aarch64-sim --no-sign
       - name: Launch the packaged app
         run: python3 scripts/ios_smoke.py
@@ -43,4 +55,17 @@ jobs:
           name: ios-simulator-${{ github.sha }}
           path: ios-test-output/
           if-no-files-found: warn
+          retention-days: 7
+      - name: Build unsigned device candidate
+        run: |
+          npm run tauri -- ios build --ci --target aarch64 --no-sign
+          git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
+          ipa=(src-tauri/gen/apple/build/arm64/*.ipa)
+          test "${#ipa[@]}" -eq 1
+          python3 scripts/verify_ios.py "${ipa[0]}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ios-unsigned-device-${{ github.sha }}
+          path: src-tauri/gen/apple/build/arm64/*.ipa
+          if-no-files-found: error
           retention-days: 7

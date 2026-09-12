@@ -1,0 +1,96 @@
+name: iOS TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: New positive iOS build number (1-9999; never reuse an uploaded number)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ios-testflight
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    environment: ios-testflight
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      BUILD_NUMBER: ${{ inputs.build_number }}
+      APPLE_DEVELOPMENT_TEAM: ${{ vars.APPLE_DEVELOPMENT_TEAM }}
+      APPLE_API_ISSUER: ${{ vars.APPLE_API_ISSUER }}
+      APPLE_API_KEY: ${{ vars.APPLE_API_KEY }}
+      IOS_USES_NON_EXEMPT_ENCRYPTION: ${{ vars.IOS_USES_NON_EXEMPT_ENCRYPTION }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Require passing checks for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for workflow in checks.yml ios.yml; do
+            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs?head_sha=$GITHUB_SHA&status=success" \
+              --jq '.workflow_runs | any(.head_sha == env.GITHUB_SHA and .conclusion == "success")' | grep -qx true
+          done
+      - name: Validate signing setup
+        run: |
+          python3 - <<'PY'
+          import os, re
+          required = ['APPLE_DEVELOPMENT_TEAM', 'APPLE_API_ISSUER', 'APPLE_API_KEY']
+          if any(not os.environ.get(key) for key in required):
+              raise SystemExit('Complete the ios-testflight environment setup first; see docs/IOS_TESTING.md.')
+          if not re.fullmatch(r'[1-9][0-9]{0,3}', os.environ['BUILD_NUMBER']):
+              raise SystemExit('Use a new build number from 1 to 9999.')
+          if os.environ['IOS_USES_NON_EXEMPT_ENCRYPTION'] not in ('true', 'false'):
+              raise SystemExit('Complete the Apple encryption declaration before uploading.')
+          PY
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install build prerequisites
+        run: |
+          xcodebuild -version
+          rustup target add aarch64-apple-ios
+          command -v xcodegen || brew install xcodegen
+          npm ci
+      - name: Build archive and upload to TestFlight
+        env:
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+          IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_MOBILE_PROVISION: ${{ secrets.IOS_MOBILE_PROVISION }}
+        run: |
+          umask 077
+          test -n "$APPLE_API_KEY_CONTENT"
+          test -n "$IOS_CERTIFICATE"
+          test -n "$IOS_CERTIFICATE_PASSWORD"
+          test -n "$IOS_MOBILE_PROVISION"
+          export APPLE_API_KEY_PATH="$RUNNER_TEMP/AuthKey_$APPLE_API_KEY.p8"
+          export API_PRIVATE_KEYS_DIR="$RUNNER_TEMP"
+          config="$RUNNER_TEMP/ios-upload.json"
+          trap 'rm -f "$APPLE_API_KEY_PATH" "$RUNNER_TEMP/ios-upload.json" "$RUNNER_TEMP/Info.upload.plist"' EXIT
+          python3 - <<'PY'
+          import json, os, pathlib, plistlib
+          temporary = pathlib.Path(os.environ['RUNNER_TEMP'])
+          pathlib.Path(os.environ['APPLE_API_KEY_PATH']).write_text(os.environ['APPLE_API_KEY_CONTENT'])
+          info = temporary / 'Info.upload.plist'
+          info.write_bytes(plistlib.dumps({'ITSAppUsesNonExemptEncryption': os.environ['IOS_USES_NON_EXEMPT_ENCRYPTION'] == 'true'}))
+          (temporary / 'ios-upload.json').write_text(json.dumps({'bundle': {'iOS': {
+              'bundleVersion': os.environ['BUILD_NUMBER'], 'infoPlist': str(info)
+          }}}))
+          PY
+          npm run tauri -- ios init --ci --config "$config"
+          python3 scripts/prepare_ios.py
+          npm run tauri -- ios build --ci --target aarch64 --export-method app-store-connect --config "$config"
+          git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
+          ipa=(src-tauri/gen/apple/build/arm64/*.ipa)
+          test "${#ipa[@]}" -eq 1
+          python3 scripts/verify_ios.py "${ipa[0]}" --build-number "$BUILD_NUMBER" --signed
+          xcrun altool --validate-app --type ios --file "${ipa[0]}" --apiKey "$APPLE_API_KEY" --apiIssuer "$APPLE_API_ISSUER"
+          xcrun altool --upload-app --type ios --file "${ipa[0]}" --apiKey "$APPLE_API_KEY" --apiIssuer "$APPLE_API_ISSUER"

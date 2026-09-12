@@ -64,6 +64,16 @@ export default function Preferences({
       setBusy(false);
     }
   }
+  function changeAlert<
+    K extends "notify_tells" | "notify_guild" | "notify_keywords",
+  >(key: K, next: Experience[K]) {
+    void perform(async () => {
+      if (next === true || (Array.isArray(next) && next.length > 0)) {
+        await invoke("request_notification_permission");
+      }
+      change(key, next);
+    });
+  }
   const share = async (document: ExportDocument) => {
     await invoke(
       "share_document",
@@ -210,12 +220,12 @@ export default function Preferences({
           <p className="settings-note">
             Get alerts while the app is in the background and connected.
           </p>
-          <fieldset disabled={!info?.notifications_supported}>
+          <fieldset disabled={busy}>
             <label className="preference-toggle">
               <input
                 type="checkbox"
                 checked={value.notify_tells}
-                onChange={(e) => change("notify_tells", e.target.checked)}
+                onChange={(e) => changeAlert("notify_tells", e.target.checked)}
               />
               Incoming tells
             </label>
@@ -223,7 +233,7 @@ export default function Preferences({
               <input
                 type="checkbox"
                 checked={value.notify_guild}
-                onChange={(e) => change("notify_guild", e.target.checked)}
+                onChange={(e) => changeAlert("notify_guild", e.target.checked)}
               />
               Guild messages
             </label>
@@ -250,7 +260,7 @@ export default function Preferences({
                     );
                     return;
                   }
-                  change("notify_keywords", words);
+                  changeAlert("notify_keywords", words);
                 }}
               />
             </label>
@@ -267,8 +277,8 @@ export default function Preferences({
           </fieldset>
           <p className="settings-note">
             Alerts are off by default. Muted authors never trigger alerts; the
-            lock screen uses a generic notice. Change sound and notification
-            permissions in Android settings.
+            message stays private unless you enable previews. Change sound and
+            notification permissions in device settings.
           </p>
           <button
             className="secondary-button"

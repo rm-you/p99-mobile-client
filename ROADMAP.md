@@ -127,7 +127,7 @@ The complete structured item-link data is preserved. Muting does not destroy his
 
 Implemented: optional native Android tell, guild, and keyword alerts with private
 lock-screen notices and optional previews. iOS provides copy/share controls, but
-no chat alerts or persistent background service. About provides version/build
+local alerts and native visibility events; it has no persistent background service. About provides version/build
 information, credits, source links, and sanitized diagnostic exports.
 
 Validation: synthetic frontend and Rust tests cover history isolation/retention,

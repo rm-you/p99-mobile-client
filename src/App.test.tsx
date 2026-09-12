@@ -1161,6 +1161,30 @@ it("hides unsupported notification settings without mentioning other platforms",
   expect(screen.queryByText(/alerts are not available/)).toBeNull();
 });
 
+it("requests alert permission on opt-in and leaves alerts off when it is denied", async () => {
+  const fallback = native.invoke.getMockImplementation()!;
+  native.invoke.mockImplementation((command: string, args: any) =>
+    command === "request_notification_permission"
+      ? Promise.reject(
+          "Allow notifications in device settings to receive chat alerts.",
+        )
+      : fallback(command, args),
+  );
+  render(<App />);
+  await screen.findByRole("button", { name: "Login" });
+  fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+  const tells = await screen.findByRole("checkbox", { name: "Incoming tells" });
+  expect(native.invoke).not.toHaveBeenCalledWith(
+    "request_notification_permission",
+  );
+  fireEvent.click(tells);
+  await screen.findByText(
+    "Allow notifications in device settings to receive chat alerts.",
+  );
+  expect((tells as HTMLInputElement).checked).toBe(false);
+  expect(native.invoke).not.toHaveBeenCalledWith("connect", expect.anything());
+});
+
 it("does not start a login after disconnecting during history loading", async () => {
   let finishHistory!: (records: ChatRecord[]) => void;
   const fallback = native.invoke.getMockImplementation()!;

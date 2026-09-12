@@ -43,15 +43,18 @@ deletes the database's messages; clearing the current view only clears memory.
 
 Credentials are excluded from system backup. Nonsecret preferences, profile
 labels, and saved chat may be included in Android system backup or device
-transfer depending on OS/device settings. Copies outside the running app's
+transfer depending on OS/device settings. iOS preferences and chat history may
+also be included in device backups; Keychain logins use device-only protection.
+Copies outside the running app's
 storage are not removed by its history-retention controls.
 
 ## Notifications, clipboard, and exports
 
-Chat alerts are optional local Android notifications produced while the active
-session receives messages in the background. Previews are off by default; public
-lock-screen notices contain neither sender nor chat text. Android's notification
-settings ultimately control presentation.
+Chat alerts are optional local Android/iOS notifications produced while the active
+session can receive messages in the background. They do not use push servers or
+keep the process running. Previews are off by default. Android also supplies a
+generic public lock-screen notice. If previews are enabled, iOS notification
+settings control whether they appear while the phone is locked.
 
 Copy and Share run only when requested. Copy puts the selected message on the
 system clipboard. Share grants the chosen app access to an export file; the

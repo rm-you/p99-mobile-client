@@ -77,7 +77,8 @@ npm run tauri -- android build
 
 ### iOS
 
-On a Mac with Xcode and the iOS prerequisites configured:
+For hosted Mac builds, unsigned device candidates, and TestFlight setup, see
+[the iOS testing guide](docs/IOS_TESTING.md). On a Mac with Xcode configured:
 
 ```sh
 npm run tauri -- ios init
@@ -110,7 +111,7 @@ build commands sync the committed icons into initialized Android/iOS projects.
   event delivery while the webview is hidden.
 - `src-tauri/session-service/`: Android foreground service, private connection
   notification, and native Stop control; Android/iOS copy and share controls.
-  Background-service methods remain no-ops on iOS/desktop.
+  iOS supplies native lifecycle and local alerts; persistent service support remains Android-only.
 - `src-tauri/src/settings.rs` and `experience.rs`: validated, atomic writes of nonsecret preferences.
 - `src-tauri/src/history.rs`: configurable SQLite retention and native alert matching.
 - `src-tauri/src/support.rs`: bounded history exports, sharing, and sanitized diagnostics.
@@ -156,7 +157,8 @@ compiled as well as Rust. A successful APK build still requires device validatio
 Secure storage implementation references:
 [Android authentication-bound keys](https://developer.android.com/identity/sign-in/biometric-auth#auth-per-use-keys)
 and [Apple Keychain access control](https://developer.apple.com/documentation/localauthentication/accessing-keychain-items-with-face-id-or-touch-id).
-The iOS implementation still requires an Xcode build and device validation.
+Hosted iOS checks compile the native plugins and exercise the Simulator app.
+Real Face ID/passcode and game-session behavior still require iPhone validation.
 
 ## License
 

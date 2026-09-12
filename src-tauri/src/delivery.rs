@@ -67,6 +67,7 @@ impl PendingEvents {
 #[derive(Default)]
 struct DeliveryState {
     hidden: bool,
+    native_hidden: bool,
     draining: bool,
     generation: u64,
     channel: Option<Channel<AppEvent>>,
@@ -79,7 +80,10 @@ pub struct EventDelivery(Mutex<DeliveryState>);
 
 impl EventDelivery {
     pub fn is_hidden(&self) -> bool {
-        self.0.lock().map(|s| s.hidden).unwrap_or(true)
+        self.0
+            .lock()
+            .map(|s| s.hidden || s.native_hidden)
+            .unwrap_or(true)
     }
     /// Replace the UI subscription only after the previous network worker has finished.
     pub fn attach(&self, channel: Channel<AppEvent>) {
@@ -109,8 +113,17 @@ impl EventDelivery {
         }
     }
 
+    /// Native suspension wins over a late visibility event from the WebView.
+    pub fn set_native_visible(self: &Arc<Self>, visible: bool) {
+        if let Ok(mut state) = self.0.lock() {
+            state.native_hidden = !visible;
+            self.schedule(&mut state);
+        }
+    }
+
     fn schedule(self: &Arc<Self>, state: &mut DeliveryState) {
         if !state.hidden
+            && !state.native_hidden
             && !state.draining
             && state.channel.is_some()
             && !state.pending.0.is_empty()
@@ -128,7 +141,11 @@ impl EventDelivery {
                 let Ok(mut state) = self.0.lock() else {
                     return;
                 };
-                if state.hidden || state.pending.0.is_empty() || state.channel.is_none() {
+                if state.hidden
+                    || state.native_hidden
+                    || state.pending.0.is_empty()
+                    || state.channel.is_none()
+                {
                     state.draining = false;
                     return;
                 }
@@ -158,6 +175,29 @@ mod tests {
     use super::*;
     use p99_logger_client::client::ConnectionStage;
     use std::{sync::mpsc, time::Duration};
+
+    #[test]
+    fn native_suspension_cannot_be_overridden_by_webview_visibility() {
+        let delivery = Arc::new(EventDelivery::default());
+        let (sent, received) = mpsc::channel();
+        delivery.attach(Channel::new(move |_| {
+            sent.send(()).unwrap();
+            Ok(())
+        }));
+        delivery.set_native_visible(false);
+        delivery.set_visible(true);
+        delivery.publish(AppEvent::Finished { error: None });
+        assert!(delivery.is_hidden());
+        assert!(received.recv_timeout(Duration::from_millis(50)).is_err());
+        delivery.set_visible(false);
+        delivery.set_native_visible(true);
+        assert!(delivery.is_hidden());
+        assert!(received.recv_timeout(Duration::from_millis(50)).is_err());
+        delivery.set_visible(true);
+        received.recv_timeout(Duration::from_secs(3)).unwrap();
+        assert!(!delivery.is_hidden());
+        assert!(received.try_recv().is_err());
+    }
 
     fn record(id: u64) -> AppEvent {
         use p99_logger_client::{
