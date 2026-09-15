@@ -351,6 +351,26 @@ Declared license: MIT OR Apache-2.0
 Source: https://crates.io/crates/dyn-clone/1.0.20
 License texts: 85ad950cce8752f716dbf49be95b2639172cb49f291336d57f1fdc9989e38179, 30fefc3a7d6a0041541858293bcbea2dde4caa4c0a5802f996a7f7e8c0085652
 
+Rust: eq-network 0.1.0
+Declared license: MIT
+Source: git+https://github.com/eq-p99-tools/eq-network?rev=47b8c7e4b0f67ccae467f76f51ac28733ba6927c#47b8c7e4b0f67ccae467f76f51ac28733ba6927c
+The published package omits a separate license file; refer to the source and declared license above.
+
+Rust: eq-network-game 0.1.0
+Declared license: MIT
+Source: git+https://github.com/eq-p99-tools/eq-network?rev=47b8c7e4b0f67ccae467f76f51ac28733ba6927c#47b8c7e4b0f67ccae467f76f51ac28733ba6927c
+The published package omits a separate license file; refer to the source and declared license above.
+
+Rust: eq-network-login 0.1.0
+Declared license: MIT
+Source: git+https://github.com/eq-p99-tools/eq-network?rev=47b8c7e4b0f67ccae467f76f51ac28733ba6927c#47b8c7e4b0f67ccae467f76f51ac28733ba6927c
+The published package omits a separate license file; refer to the source and declared license above.
+
+Rust: eq-network-transport 0.1.0
+Declared license: MIT
+Source: git+https://github.com/eq-p99-tools/eq-network?rev=47b8c7e4b0f67ccae467f76f51ac28733ba6927c#47b8c7e4b0f67ccae467f76f51ac28733ba6927c
+The published package omits a separate license file; refer to the source and declared license above.
+
 Rust: equivalent 1.0.2
 Declared license: Apache-2.0 OR MIT
 Source: https://crates.io/crates/equivalent/1.0.2
@@ -791,11 +811,6 @@ Declared license: MPL-2.0
 Source: https://crates.io/crates/option-ext/0.2.0
 License texts: fb72181dd02473b6e42749e14362ede6ba6202540dcc2ce98299ed9051fbde61
 
-Rust: p99-logger-client 0.1.0
-Declared license: MIT
-Source: git+https://github.com/rm-you/p99-logger-client?branch=main#27c56ecc6d4a43b750ed26882ab7cd8a06f61e61
-License texts: 2d2d378b11d46176a8ad1ba4840e4bf21d1b9df23344a53af3cdcfd7a59eccba
-
 Rust: parking_lot 0.12.5
 Declared license: MIT OR Apache-2.0
 Source: https://crates.io/crates/parking_lot/0.12.5
@@ -875,11 +890,6 @@ Rust: proc-macro2 1.0.107
 Declared license: MIT OR Apache-2.0
 Source: https://crates.io/crates/proc-macro2/1.0.107
 License texts: 85ad950cce8752f716dbf49be95b2639172cb49f291336d57f1fdc9989e38179, 30fefc3a7d6a0041541858293bcbea2dde4caa4c0a5802f996a7f7e8c0085652
-
-Rust: protocol 2.0.0
-Declared license: MIT OR Apache-2.0
-Source: git+https://github.com/eq-p99-tools/p99-login-proxy?tag=v2.0.0-rc9#ebafb73d16463b39e7f0165c28f49e1d60ff4541
-The published package omits a separate license file; refer to the source and declared license above.
 
 Rust: quick-xml 0.42.0
 Declared license: MIT
@@ -1426,6 +1436,16 @@ Declared license: Unicode-3.0
 Source: https://crates.io/crates/zerofrom-derive/0.1.7
 License texts: cde87abe221f413fede55ded0f17985f37b8fdc23e5f6cba9a3955437facb3ae
 
+Rust: zeroize 1.9.0
+Declared license: Apache-2.0 OR MIT
+Source: https://crates.io/crates/zeroize/1.9.0
+License texts: 283ea6cc2997a1a70da0049e09adf9317bb60ca1b51279b65196b83a69e1996b, 836ed921bbad486c21fe437f1f565aef73cf20f242f7344eae04b01ed53a2d57
+
+Rust: zeroize_derive 1.5.0
+Declared license: Apache-2.0 OR MIT
+Source: https://crates.io/crates/zeroize_derive/1.5.0
+License texts: 283ea6cc2997a1a70da0049e09adf9317bb60ca1b51279b65196b83a69e1996b, 1038b7737a0a04bd9268bbb8d17ee4e13c9bb3cf36f39da46c3a1818c798aa20
+
 Rust: zerotrie 0.2.5
 Declared license: Unicode-3.0
 Source: https://crates.io/crates/zerotrie/0.2.5
@@ -1526,6 +1546,33 @@ THE SOFTWARE.
 
 ===== 0d8a0aecbcbaf0573dea8de966d252874fa4b99f3e1650976dc8a0a2fc062c71 =====
 Copyright (c) The rust-url developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+===== 1038b7737a0a04bd9268bbb8d17ee4e13c9bb3cf36f39da46c3a1818c798aa20 =====
+Copyright (c) 2019-2026 The RustCrypto Project Developers
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -2867,29 +2914,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
-
-===== 2d2d378b11d46176a8ad1ba4840e4bf21d1b9df23344a53af3cdcfd7a59eccba =====
-MIT License
-
-Copyright (c) 2026 p99-logger-client contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
 
 ===== 2f213ec6b1355dc841dc489c9e7ce1dddd07611df474efcf61b8a960797398e9 =====
 Apache License
@@ -6878,6 +6902,33 @@ Permission is granted to anyone to use this software for any purpose, including 
 2. Altered source versions must be plainly marked as such, and must not be misrepresented as being the original software.
 
 3. This notice may not be removed or altered from any source distribution.
+
+===== 836ed921bbad486c21fe437f1f565aef73cf20f242f7344eae04b01ed53a2d57 =====
+Copyright (c) 2018-2026 The RustCrypto Project Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
 
 ===== 84e1bbfebd74e4196cfa0ea5cf58e677aa24b47c6661adbb19fb07920d089d1d =====
 Copyright (c) 2014 Alex Crichton

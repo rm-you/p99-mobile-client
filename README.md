@@ -46,7 +46,7 @@ your device.
 ## Development
 
 The native app uses Tauri 2, React, and the
-[reusable Rust P99 client](https://github.com/rm-you/p99-logger-client). It connects
+[reusable Rust EQ client](https://github.com/eq-p99-tools/eq-network). It connects
 directly to the game servers. Android is the distributed release; the repository
 also includes iOS source, which requires separate platform validation. See the
 [roadmap](ROADMAP.md) for remaining work.
@@ -124,14 +124,13 @@ build commands sync the committed icons into initialized Android/iOS projects.
 - `src-tauri/secure-login/`: native Keystore/Keychain integration. Its Rust API
   exposes no credential-reading command to the webview. Android key use is bound
   to the authenticated `CryptoObject`; iOS access is enforced by Keychain ACLs.
-- `p99-logger-client`: protocol handling, authentication, decoding, retries, and
-  the bundled asset checksum inventory. These stay in the library repository.
+- `eq-network`: typed protocol handling, authentication, commands, events,
+  decoding, retries, and the bundled asset checksum inventory.
 
-The Rust manifest depends on the library's `main` branch, with its CLI feature
-disabled. `Cargo.lock` records the exact resolved commit. To adopt a newer
-library revision deliberately, run `cargo update -p p99-logger-client` inside
-`src-tauri`, then review and commit the lockfile change. Inline links require the
-logger's additive `text_start` / `text_end` fields; `start` / `end` describe the
+The Rust manifest and `Cargo.lock` pin an exact reviewed `eq-network` commit. To
+adopt a newer revision deliberately, update the `rev` in `src-tauri/Cargo.toml`,
+run `cargo update -p eq-network` inside `src-tauri`, then review and commit the
+lockfile change. Inline links use `text_start` / `text_end`; `start` / `end` describe the
 original wire bytes and must not be used to slice decoded text. The locked library
 supplies these fields; older records without them retain separate item buttons.
 

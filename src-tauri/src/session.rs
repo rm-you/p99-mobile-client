@@ -1,5 +1,5 @@
 use crate::outgoing::ChatOutbox;
-use p99_logger_client::client::{
+use eq_network::client::{
     CancellationToken, Client, ClientConfig, ClientEvent, ClientIdentity, LoginError, RunOptions,
     ServerProtocol,
 };
@@ -65,7 +65,7 @@ impl SessionFailure {
     fn from_error(error: &anyhow::Error) -> Self {
         match error.downcast_ref::<LoginError>() {
             Some(LoginError::InvalidCredentials) => Self::InvalidCredentials,
-            None => Self::ConnectionLost,
+            Some(_) | None => Self::ConnectionLost,
         }
     }
 }
@@ -112,10 +112,7 @@ impl SessionController {
     ) -> Result<(), String> {
         let config = client_config(request);
         let protocol = config.protocol;
-        let identity = ClientIdentity {
-            hostname: format!("P99-{}", std::env::consts::OS),
-            username: "mobile".into(),
-        };
+        let identity = ClientIdentity::new(format!("P99-{}", std::env::consts::OS), "mobile");
         let client = Client::new(config, identity).map_err(|error| error.to_string())?;
         let mut slot = self
             .worker

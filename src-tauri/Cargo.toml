@@ -33,7 +33,7 @@ uuid = { version = "1", features = ["v4"] }
 tauri-plugin-opener = "2"
 tauri-plugin-secure-login = { path = "secure-login" }
 tauri-plugin-session-service = { path = "session-service" }
-p99-logger-client = { git = "https://github.com/rm-you/p99-logger-client", branch = "main", default-features = false }
+eq-network = { git = "https://github.com/eq-p99-tools/eq-network", rev = "47b8c7e4b0f67ccae467f76f51ac28733ba6927c", version = "0.1.0" }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

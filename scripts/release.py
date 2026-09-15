@@ -148,7 +148,7 @@ def bundle(apk, tag):
     verify(apk)
     info["source_commit"] = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     lock = tomllib.loads((ROOT / "src-tauri/Cargo.lock").read_text())
-    info["network_source"] = next(p["source"] for p in lock["package"] if p["name"] == "p99-logger-client")
+    info["network_source"] = next(p["source"] for p in lock["package"] if p["name"] == "eq-network")
     info.update(signing_identity())
     info["apk_sha256"] = hashlib.sha256(apk.read_bytes()).hexdigest()
     (apk.parent / "build-info.json").write_text(json.dumps(info, indent=2) + "\n")

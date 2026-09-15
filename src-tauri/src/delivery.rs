@@ -1,5 +1,5 @@
 use crate::session::AppEvent;
-use p99_logger_client::client::ClientEvent;
+use eq_network::client::ClientEvent;
 use std::{
     collections::VecDeque,
     sync::{Arc, Mutex},
@@ -156,27 +156,29 @@ impl EventDelivery {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use p99_logger_client::client::ConnectionStage;
+    use eq_network::client::ConnectionStage;
     use std::{sync::mpsc, time::Duration};
 
     fn record(id: u64) -> AppEvent {
-        use p99_logger_client::{
+        use eq_network::{
             chat,
             client::{Record, RecordEvent},
         };
-        AppEvent::Client(ClientEvent::Record(Box::new(Record {
-            timestamp: "2026-01-01T00:00:00Z".into(),
-            server: "Example server".into(),
-            character: "ExampleCharacter".into(),
-            zone: "example".into(),
-            session_id: "synthetic".into(),
-            message_id: id,
-            event: RecordEvent::Chat(
-                chat::parse(0x024d, b"Example message\0", false)
-                    .unwrap()
-                    .unwrap(),
-            ),
-        })))
+        AppEvent::Client(ClientEvent::Record(Box::new(
+            Record::new(
+                "Example server",
+                "ExampleCharacter",
+                "example",
+                "synthetic",
+                id,
+                RecordEvent::Chat(
+                    chat::parse(0x024d, b"Example message\0", false)
+                        .unwrap()
+                        .unwrap(),
+                ),
+            )
+            .with_timestamp("2026-01-01T00:00:00Z"),
+        )))
     }
 
     #[test]
