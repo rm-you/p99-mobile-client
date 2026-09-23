@@ -51,7 +51,7 @@ final class KeychainMetadataTests: XCTestCase {
         XCTAssertEqual(try KeychainMetadata.profiles(matching: query).count, 2)
     }
 
-    func testProtectedMetadataDoesNotUnlockTheSecret() throws {
+    private func insertProtectedProfile() throws -> Profile {
         let access = try XCTUnwrap(SecAccessControlCreateWithFlags(nil,
             kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly, .userPresence, nil))
         let profile = Profile(id: UUID().uuidString.lowercased(), character: "ExampleCharacter", server: "green")
@@ -60,7 +60,15 @@ final class KeychainMetadataTests: XCTestCase {
             throw XCTSkip("This test device cannot create passcode/user-presence protected items; verify on iPhone.")
         }
         XCTAssertEqual(added, errSecSuccess)
+        return profile
+    }
+
+    func testListsProtectedMetadataWithoutAuthentication() throws {
+        let profile = try insertProtectedProfile()
         XCTAssertEqual(try KeychainMetadata.profiles(matching: query), [profile])
+    }
+
+    private func readSecretWithoutAuthentication(_ profile: Profile) -> (OSStatus, CFTypeRef?) {
         let context = LAContext()
         context.interactionNotAllowed = true
         defer { context.invalidate() }
@@ -69,8 +77,25 @@ final class KeychainMetadataTests: XCTestCase {
         secret[kSecUseAuthenticationContext as String] = context
         secret[kSecReturnData as String] = true
         var result: CFTypeRef?
-        XCTAssertNotEqual(SecItemCopyMatching(secret as CFDictionary, &result), errSecSuccess)
-        XCTAssertNil(result)
+        let status = SecItemCopyMatching(secret as CFDictionary, &result)
+        return (status, result)
+    }
+
+    func testMetadataReadDoesNotAuthorizeProtectedSecretAccess() throws {
+        let profile = try insertProtectedProfile()
+        // Establish the OS protection before invoking the code under test.
+        let before = readSecretWithoutAuthentication(profile)
+        #if targetEnvironment(simulator)
+        if before.0 == errSecSuccess {
+            throw XCTSkip("This Simulator does not enforce user-presence protection; verify secret unlock on iPhone.")
+        }
+        #endif
+        XCTAssertTrue([errSecInteractionNotAllowed, errSecAuthFailed].contains(before.0))
+        XCTAssertNil(before.1)
+        XCTAssertEqual(try KeychainMetadata.profiles(matching: query), [profile])
+        let after = readSecretWithoutAuthentication(profile)
+        XCTAssertTrue([errSecInteractionNotAllowed, errSecAuthFailed].contains(after.0))
+        XCTAssertNil(after.1)
     }
 
     func testRejectsMismatchedMetadataWithoutDeletingTheEntry() throws {

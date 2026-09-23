@@ -11,7 +11,9 @@ bundled web assets. It launches a disposable iPhone simulator, checks settings
 persistence and resume through XCTest, and captures screenshots/results. An isolated
 native test host exercises populated Keychain metadata and background-grace cleanup
 using synthetic values, without linking the game networking code. The protected-item
-test is skipped if the test device cannot create passcode-protected items; a skip
+tests skip if the test device cannot create passcode-protected items. The separate
+secret-access test also skips on a Simulator that allows an unauthenticated read
+in its control check, before calling the metadata reader; a skip
 does not validate Face ID or passcode access on a physical device. The workflow then
 builds a device IPA and checks its identity, Face ID metadata, and privacy manifest.
 Device packaging still runs after a UI-test failure to collect both results;
