@@ -7,8 +7,8 @@ import subprocess
 import time
 
 
-def simctl(*args):
-    return subprocess.check_output(["xcrun", "simctl", *args], text=True, timeout=300).strip()
+def simctl(*args, timeout=300):
+    return subprocess.check_output(["xcrun", "simctl", *args], text=True, timeout=timeout).strip()
 
 
 def main():
@@ -69,7 +69,8 @@ def main():
     try:
         print("Booting disposable iPhone simulator...", flush=True)
         simctl("boot", device)
-        simctl("bootstatus", device, "-b")
+        # First boot on a hosted runner can spend over five minutes preparing iOS.
+        simctl("bootstatus", device, "-b", timeout=600)
         simctl("install", device, str(app.resolve()))
         print("Launching the packaged application...", flush=True)
         # SpringBoard can briefly reject launch requests after a cold boot.
