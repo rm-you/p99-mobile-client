@@ -128,9 +128,13 @@ pub async fn request_notification_permission(app: tauri::AppHandle) -> Result<()
 }
 #[tauri::command]
 pub async fn export_diagnostics(app: tauri::AppHandle) -> Result<Document, String> {
-    with_store(app, |store| {
+    let vault = app
+        .state::<tauri_plugin_secure_login::SecureLogin<tauri::Wry>>()
+        .diagnostic();
+    with_store(app, move |store| {
         Ok(Document {
-            text: json!({"app":app_info(),"chat":store.diagnostics()}).to_string(),
+            text: json!({"app":app_info(),"chat":store.diagnostics(),"saved_login_error":vault})
+                .to_string(),
             format: "json",
         })
     })

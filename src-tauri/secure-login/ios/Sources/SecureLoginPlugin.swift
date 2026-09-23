@@ -51,6 +51,8 @@ class SecureLoginPlugin: Plugin {
                 var error: NSError?
                 let available = context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error)
                 invoke.resolve(["available": available, "profiles": profiles.map { $0.value }, "legacySaved": legacySaved])
+            } catch let error as KeychainMetadata.Failure {
+                invoke.reject("Could not inspect saved characters.", code: error.code)
             } catch { invoke.reject("Could not inspect saved characters.") }
         }
     }

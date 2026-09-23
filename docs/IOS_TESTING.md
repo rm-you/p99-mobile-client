@@ -157,7 +157,9 @@ operation and one authentication context, then invalidate it. Saving a new entry
 does not explicitly authenticate; accessing its protected credentials later requires
 user presence (Face ID or device passcode). Listing uses a separate noninteractive
 authentication context and requests attributes only, never password data. Failed
-lookups log only the operation and OS status, not labels or credentials. No Keychain
+lookups log only the operation and OS status, not labels or credentials. A diagnostics
+export also includes that allowlisted failure code so a phone-only tester can report
+it without needing macOS Console. No Keychain
 service or storage format changes, so existing entries remain eligible for lookup.
 Simulator startup
 and UI tests do not establish real Face ID/passcode behavior. Use the device matrix
