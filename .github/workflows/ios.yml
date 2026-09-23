@@ -2,8 +2,7 @@ name: iOS checks
 
 on:
   push:
-    # The development branch can exercise hosted Macs before a PR is opened.
-    branches: [main, codex/ios-parity]
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -13,8 +12,6 @@ permissions:
 
 jobs:
   simulator:
-    # Opt in to expensive development-branch builds; PR/main checks still run normally.
-    if: github.event_name != 'push' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, '[ios-ci]')
     runs-on: macos-26
     timeout-minutes: 45
     concurrency:

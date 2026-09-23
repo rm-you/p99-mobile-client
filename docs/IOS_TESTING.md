@@ -14,12 +14,10 @@ Device packaging still runs after a UI-test failure to collect both results;
 the overall workflow and TestFlight gate require all checks to pass. Restart tests
 allow the shared UI's debounced autosave to finish before terminating the process.
 
-On `codex/ios-parity`, only a commit message containing `[ios-ci]` opts into the
-Mac job. Ordinary development commits skip it. Main and pull-request checks run
-normally. Remove this temporary branch trigger before opening a PR to avoid
-duplicate branch/PR builds. The job also supports manual dispatch once the
-workflow is on the default branch. Rust dependencies/build products are cached;
-artifacts expire after seven days.
+The Mac job runs on pull requests and pushes to main, with manual dispatch also
+available. Feature-branch pushes do not create duplicate builds alongside the
+pull-request checks. Rust dependencies/build products are cached; artifacts
+expire after seven days.
 
 The `ios-unsigned-device-<commit>` artifact is an **unsigned IPA**, not a TestFlight
 or directly installable distribution build. It is a candidate for local re-signing
