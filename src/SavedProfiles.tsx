@@ -11,6 +11,7 @@ export interface VaultStatus {
   available: boolean;
   profiles: SavedProfile[];
   legacySaved: boolean;
+  recoveryAvailable: boolean;
 }
 export const profileLabel = (profile: SavedProfile) =>
   `${profile.character} · ${serverLabel(profile.server)}`;
@@ -22,17 +23,35 @@ export default function SavedProfiles({
   onConnect,
   onEdit,
   onDelete,
+  onRecover,
 }: {
   vault: VaultStatus;
   disabled: boolean;
   onConnect: (profile: SavedProfile) => void;
   onEdit: (profile: SavedProfile | "legacy") => void;
   onDelete: (profile: SavedProfile | "legacy") => void;
+  onRecover: () => void;
 }) {
-  if (!vault.profiles.length && !vault.legacySaved) return null;
+  if (!vault.profiles.length && !vault.legacySaved && !vault.recoveryAvailable)
+    return null;
   return (
     <section className="saved-profiles" aria-label="Saved characters">
       <h2>Saved characters</h2>
+      {vault.recoveryAvailable && (
+        <div>
+          <p className="storage-hint">
+            Unlock once to restore the list of previously saved characters.
+          </p>
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={disabled || !vault.available}
+            onClick={onRecover}
+          >
+            Restore saved characters
+          </button>
+        </div>
+      )}
       <ul>
         {[...vault.profiles]
           .sort((a, b) => profileLabel(a).localeCompare(profileLabel(b)))

@@ -13,7 +13,7 @@ native test host exercises populated Keychain metadata and background-grace clea
 using synthetic values, without linking the game networking code. The protected-item
 tests skip if the test device cannot create passcode-protected items. The separate
 secret-access test also skips on a Simulator that allows an unauthenticated read
-in its control check, before calling the metadata reader; a skip
+in its control check, before reading the label index; a skip
 does not validate Face ID or passcode access on a physical device. The workflow then
 builds a device IPA and checks its identity, Face ID metadata, and privacy manifest.
 Device packaging still runs after a UI-test failure to collect both results;
@@ -157,12 +157,21 @@ not deliberately disconnect merely because it enters the background.
 Saved-character edits that keep the account/password use one native Keychain
 operation and one authentication context, then invalidate it. Saving a new entry
 does not explicitly authenticate; accessing its protected credentials later requires
-user presence (Face ID or device passcode). Listing uses a separate noninteractive
-authentication context and requests attributes only, never password data. Failed
-lookups log only the operation and OS status, not labels or credentials. A diagnostics
-export also includes that allowlisted failure code so a phone-only tester can report
-it without needing macOS Console. No Keychain
-service or storage format changes, so existing entries remain eligible for lookup.
+user presence (Face ID or device passcode). Physical-device diagnostics showed that
+listing attributes on these protected entries can also fail with `errSecInteractionNotAllowed`
+(-25308), even though the same query passed in Simulator.
+
+Startup now reads a separate device-only Keychain index containing only character/server
+labels and IDs. The original protected login service and access controls are unchanged.
+When an old protected entry exists without an index, **Restore saved characters** explicitly
+authenticates once and rebuilds the index from its metadata; it never requests password data.
+Canceled recovery preserves existing labels and credentials. Saves and deletes persist a
+recovery marker before changing protected data, so an interrupted update offers recovery
+instead of silently losing track of a saved login. Index read/write failures retain only
+allowlisted operation names and numeric OS statuses in user-requested diagnostics.
+
+Test an update over an existing installation: restore the list, restart, unlock a saved
+character, cancel an unlock, edit, and delete. Also test a newly saved character after restart.
 Simulator startup
 and UI tests do not establish real Face ID/passcode behavior. Use the device matrix
 in [IOS_PARITY.md](IOS_PARITY.md) for saved-login authentication, real-server chat,

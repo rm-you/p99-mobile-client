@@ -43,6 +43,7 @@ pub struct VaultStatus {
     pub available: bool,
     pub profiles: Vec<SavedProfile>,
     pub legacy_saved: bool,
+    pub recovery_available: bool,
 }
 
 #[derive(Serialize)]
@@ -75,6 +76,9 @@ impl VaultDiagnostic {
             "list_format" => "list_format",
             "profile_metadata" => "profile_metadata",
             "legacy_lookup" => "legacy_lookup",
+            "index_read" => "index_read",
+            "index_format" => "index_format",
+            "index_write" => "index_write",
             _ => return fallback,
         };
         match status.parse() {
@@ -99,6 +103,20 @@ impl<R: Runtime> SecureLogin<R> {
     /// Include the last lookup failure in a user-requested export, without Keychain contents.
     pub fn diagnostic(&self) -> Option<VaultDiagnostic> {
         self.diagnostic.lock().ok().and_then(|value| *value)
+    }
+
+    #[cfg(mobile)]
+    fn remember_result<T>(&self, result: &Result<T, tauri::plugin::mobile::PluginInvokeError>) {
+        use tauri::plugin::mobile::PluginInvokeError;
+        if let Ok(mut diagnostic) = self.diagnostic.lock() {
+            *diagnostic = result.as_ref().err().map(|error| {
+                let code = match error {
+                    PluginInvokeError::InvokeRejected(response) => response.code.as_deref(),
+                    _ => None,
+                };
+                VaultDiagnostic::from_code(code)
+            });
+        }
     }
     /// Retain an existing login while updating its label under one authorization.
     pub fn update_profile(
@@ -135,17 +153,8 @@ impl<R: Runtime> SecureLogin<R> {
     pub fn status(&self) -> Result<VaultStatus, String> {
         #[cfg(mobile)]
         {
-            use tauri::plugin::mobile::PluginInvokeError;
             let result = self.handle.run_mobile_plugin("status", ());
-            if let Ok(mut diagnostic) = self.diagnostic.lock() {
-                *diagnostic = result.as_ref().err().map(|error| {
-                    let code = match error {
-                        PluginInvokeError::InvokeRejected(response) => response.code.as_deref(),
-                        _ => None,
-                    };
-                    VaultDiagnostic::from_code(code)
-                });
-            }
+            self.remember_result(&result);
             result.map_err(|_| "Could not read saved characters.".into())
         }
         #[cfg(not(mobile))]
@@ -153,7 +162,21 @@ impl<R: Runtime> SecureLogin<R> {
             available: false,
             profiles: vec![],
             legacy_saved: false,
+            recovery_available: false,
         })
+    }
+
+    /// Rebuild nonsecret iOS labels under explicit user authorization.
+    pub fn recover_profiles(&self) -> Result<VaultStatus, String> {
+        #[cfg(target_os = "ios")]
+        {
+            let result = self.handle.run_mobile_plugin::<()>("recoverProfiles", ());
+            self.remember_result(&result);
+            result.map_err(|_| {
+                "Saved characters were not restored. Unlock your device and try again."
+            })?;
+        }
+        self.status()
     }
 
     /// Atomically replace one protected profile, leaving the others untouched.

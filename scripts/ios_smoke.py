@@ -7,8 +7,8 @@ import subprocess
 import time
 
 
-def simctl(*args):
-    return subprocess.check_output(["xcrun", "simctl", *args], text=True, timeout=300).strip()
+def simctl(*args, timeout=300):
+    return subprocess.check_output(["xcrun", "simctl", *args], text=True, timeout=timeout).strip()
 
 
 def main():
@@ -69,7 +69,8 @@ def main():
     try:
         print("Booting disposable iPhone simulator...", flush=True)
         simctl("boot", device)
-        simctl("bootstatus", device, "-b")
+        # First boot on a hosted runner can spend over five minutes preparing iOS.
+        simctl("bootstatus", device, "-b", timeout=600)
         simctl("install", device, str(app.resolve()))
         print("Launching the packaged application...", flush=True)
         # SpringBoard can briefly reject launch requests after a cold boot.
@@ -98,10 +99,16 @@ def main():
             result = output / "smoke.xcresult"
             if result.exists():
                 with (output / "test-summary.json").open("w") as summary:
-                    subprocess.run(["xcrun", "xcresulttool", "get", "test-results", "summary",
-                        "--path", str(result)], stdout=summary, check=False, timeout=30)
-                subprocess.run(["xcrun", "xcresulttool", "export", "attachments", "--path", str(result),
-                    "--output-path", str(output / "attachments")], check=False, timeout=30)
+                    try:
+                        subprocess.run(["xcrun", "xcresulttool", "get", "test-results", "summary",
+                            "--path", str(result)], stdout=summary, check=False, timeout=60)
+                    except subprocess.TimeoutExpired:
+                        print("Summary export timed out; retaining the original XCTest result.", flush=True)
+                try:
+                    subprocess.run(["xcrun", "xcresulttool", "export", "attachments", "--path", str(result),
+                        "--output-path", str(output / "attachments")], check=False, timeout=60)
+                except subprocess.TimeoutExpired:
+                    print("Attachment export timed out; retaining the original XCTest result.", flush=True)
         (output / "build.json").write_text(json.dumps({
             "bundle": bundle, "version": info["CFBundleShortVersionString"],
             "runtime": runtime["name"], "process_alive": True,

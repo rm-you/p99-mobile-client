@@ -72,12 +72,14 @@ const channelLabel = (name: string) =>
 
 export default function App() {
   const [settings, setSettings] = useState(initialSettings);
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [ready, setReady] = useState(false);
   const [persist, setPersist] = useState(false);
   const [vault, setVault] = useState<VaultStatus>({
     available: false,
     profiles: [],
     legacySaved: false,
+    recoveryAvailable: false,
   });
   const [editing, setEditing] = useState<SavedProfile | "legacy" | null>(null);
   const [sessionIdentity, setSessionIdentity] = useState<Pick<
@@ -266,6 +268,10 @@ export default function App() {
     setTab("chat");
   }
   useEffect(() => {
+    if (!settings.pass || tab !== "settings" || !foreground)
+      setPasswordVisible(false);
+  }, [settings.pass, tab, foreground]);
+  useEffect(() => {
     const update = () => setForeground(document.visibilityState === "visible");
     document.addEventListener("visibilitychange", update);
     return () => document.removeEventListener("visibilitychange", update);
@@ -410,6 +416,23 @@ export default function App() {
         : {}),
     }));
     setError("");
+  }
+
+  async function recoverProfiles() {
+    if (!native || vaultBusyRef.current || activeRef.current) return;
+    vaultBusyRef.current = true;
+    setVaultBusy(true);
+    setError("");
+    try {
+      setVault(await invoke<VaultStatus>("recover_profiles"));
+    } catch {
+      setError(
+        "Saved characters were not restored. Unlock your device and try again.",
+      );
+    } finally {
+      vaultBusyRef.current = false;
+      setVaultBusy(false);
+    }
   }
 
   async function saveProfile(connectionLogin?: ConnectRequest) {
@@ -781,6 +804,8 @@ export default function App() {
         </div>
         <span
           className={`connection-status ${connection.healthy ? "online" : ""}`}
+          role="status"
+          aria-label="Connection status"
         >
           {connection.label}
         </span>
@@ -809,6 +834,7 @@ export default function App() {
             onConnect={(profile) => void connect(profile)}
             onEdit={editProfile}
             onDelete={setConfirmation}
+            onRecover={() => void recoverProfiles()}
           />
           <form onSubmit={submitConnection}>
             <h2 className="manual-heading">
@@ -837,11 +863,15 @@ export default function App() {
                   }
                 />
               </label>
-              <label>
-                Password
+              <label htmlFor="login-password">Password</label>
+              <div className="password-field">
                 <input
-                  type="password"
+                  id="login-password"
+                  type={passwordVisible ? "text" : "password"}
                   autoComplete="current-password"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   required={!editing}
                   value={settings.pass}
                   onChange={(event) =>
@@ -858,7 +888,33 @@ export default function App() {
                         : "login password"
                   }
                 />
-              </label>
+                <button
+                  type="button"
+                  className="icon-button password-toggle"
+                  aria-label={
+                    passwordVisible ? "Hide password" : "Show password"
+                  }
+                  aria-controls="login-password"
+                  onPointerDown={(event) => event.preventDefault()}
+                  onClick={() => setPasswordVisible((visible) => !visible)}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="20"
+                    height="20"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+                    <circle cx="12" cy="12" r="3" />
+                    {passwordVisible && <path d="m3 3 18 18" />}
+                  </svg>
+                </button>
+              </div>
               <span className="server-label" id="server-label">
                 Server
               </span>
@@ -1154,13 +1210,11 @@ export default function App() {
         reply={reply}
         onSend={sendChat}
       />
-      {(active || status) && (
+      {(active || status) && !connection.healthy && (
         <div
           className={`chat-footer ${connection.busy ? "connection-progress" : ""}`}
         >
-          <div
-            className={`connection-feedback ${connection.healthy ? "online" : ""}`}
-          >
+          <div className="connection-feedback">
             {connection.progress !== null && (
               <div
                 className="signin-progress"

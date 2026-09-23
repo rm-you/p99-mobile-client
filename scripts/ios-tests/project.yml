@@ -34,6 +34,7 @@ targets:
     sources:
       - NativeTests.swift
       - ../../src-tauri/secure-login/ios/Sources/KeychainMetadata.swift
+      - ../../src-tauri/secure-login/ios/Sources/ProfileIndex.swift
       - ../../src-tauri/session-service/ios/Sources/BackgroundGrace.swift
     dependencies:
       - target: P99NativeHost

@@ -23,6 +23,13 @@ Unlocking requires a supported biometric or device credential. Encrypted credent
 no-backup directory. The app does not return saved account/password values to the
 webview. Character names and server labels remain visible in the saved list.
 
+On iOS, saved account/password tuples use device-only Keychain protection requiring
+Face ID or the device passcode to unlock. Character/server labels live in a separate
+device-only Keychain index, readable while the device is unlocked without a biometric
+prompt. It contains no account names or passwords. Existing entries can rebuild this
+index through an explicit **Restore saved characters** unlock; recovery does not
+return credentials to the webview or start a game connection.
+
 Changing device security settings, uninstalling, or moving to a different phone
 can make saved keys unavailable. Enter and save the login again in that case.
 Deleting a saved character removes its saved credentials and profile entry.

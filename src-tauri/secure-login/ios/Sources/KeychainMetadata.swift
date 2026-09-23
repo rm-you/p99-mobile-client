@@ -14,16 +14,16 @@ struct Profile: Codable, Equatable {
     var value: [String: String] { ["id": id, "character": character, "server": server] }
 }
 
-/// List public labels without reading or authorizing access to the protected login.
-/// Keep this separate so native tests can exercise a populated Keychain without Tauri.
+/// Read old protected labels only during explicit recovery. On a physical iPhone,
+/// even an attributes-only query can require user presence.
 enum KeychainMetadata {
     struct Failure: Error {
         let operation: String
         let status: OSStatus
         var code: String { "keychain.\(operation).\(status)" }
     }
-    static func profiles(matching query: [String: Any]) throws -> [Profile] {
-        let (status, result) = copyAttributes(matching: query, all: true)
+    static func profiles(matching query: [String: Any], context: LAContext) throws -> [Profile] {
+        let (status, result) = copyAttributes(matching: query, all: true, context: context)
         if status == errSecItemNotFound { return [] }
         guard status == errSecSuccess else { throw failure("list", status) }
         guard let entries = result as? [[String: Any]] else {
@@ -48,12 +48,13 @@ enum KeychainMetadata {
         }
     }
 
-    private static func copyAttributes(matching query: [String: Any], all: Bool) -> (OSStatus, CFTypeRef?) {
-        let context = LAContext()
-        context.interactionNotAllowed = true
-        defer { context.invalidate() }
+    private static func copyAttributes(matching query: [String: Any], all: Bool,
+                                       context suppliedContext: LAContext? = nil) -> (OSStatus, CFTypeRef?) {
+        let context = suppliedContext ?? LAContext()
+        if suppliedContext == nil { context.interactionNotAllowed = true }
+        defer { if suppliedContext == nil { context.invalidate() } }
         var attributes = query
-        // Use the current noninteractive API, not the deprecated authentication-UI flag.
+        // Only explicit recovery supplies an interactive authentication context.
         attributes[kSecUseAuthenticationContext as String] = context
         attributes[kSecReturnAttributes as String] = true
         attributes[kSecReturnData as String] = false
