@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::sync::Mutex;
 use tauri::{
     plugin::{Builder, TauriPlugin},
     Manager, Runtime,
@@ -49,7 +50,45 @@ struct ProfileKey<'a> {
     id: &'a str,
 }
 
+/// Allowlisted diagnostic only: native error messages can contain private values.
+#[derive(Clone, Copy, Serialize, PartialEq, Eq, Debug)]
+pub struct VaultDiagnostic {
+    pub operation: &'static str,
+    pub os_status: Option<i32>,
+}
+
+impl VaultDiagnostic {
+    #[cfg(any(mobile, test))]
+    fn from_code(code: Option<&str>) -> Self {
+        let fallback = Self {
+            operation: "bridge",
+            os_status: None,
+        };
+        let Some(code) = code.and_then(|value| value.strip_prefix("keychain.")) else {
+            return fallback;
+        };
+        let Some((operation, status)) = code.split_once('.') else {
+            return fallback;
+        };
+        let operation = match operation {
+            "list" => "list",
+            "list_format" => "list_format",
+            "profile_metadata" => "profile_metadata",
+            "legacy_lookup" => "legacy_lookup",
+            _ => return fallback,
+        };
+        match status.parse() {
+            Ok(status) => Self {
+                operation,
+                os_status: Some(status),
+            },
+            Err(_) => fallback,
+        }
+    }
+}
+
 pub struct SecureLogin<R: Runtime> {
+    diagnostic: Mutex<Option<VaultDiagnostic>>,
     #[cfg(mobile)]
     handle: tauri::plugin::PluginHandle<R>,
     #[cfg(not(mobile))]
@@ -57,6 +96,10 @@ pub struct SecureLogin<R: Runtime> {
 }
 
 impl<R: Runtime> SecureLogin<R> {
+    /// Include the last lookup failure in a user-requested export, without Keychain contents.
+    pub fn diagnostic(&self) -> Option<VaultDiagnostic> {
+        self.diagnostic.lock().ok().and_then(|value| *value)
+    }
     /// Retain an existing login while updating its label under one authorization.
     pub fn update_profile(
         &self,
@@ -91,10 +134,20 @@ impl<R: Runtime> SecureLogin<R> {
     /// List character/server labels without unlocking any stored credentials.
     pub fn status(&self) -> Result<VaultStatus, String> {
         #[cfg(mobile)]
-        return self
-            .handle
-            .run_mobile_plugin("status", ())
-            .map_err(|_| "Could not read saved characters.".into());
+        {
+            use tauri::plugin::mobile::PluginInvokeError;
+            let result = self.handle.run_mobile_plugin("status", ());
+            if let Ok(mut diagnostic) = self.diagnostic.lock() {
+                *diagnostic = result.as_ref().err().map(|error| {
+                    let code = match error {
+                        PluginInvokeError::InvokeRejected(response) => response.code.as_deref(),
+                        _ => None,
+                    };
+                    VaultDiagnostic::from_code(code)
+                });
+            }
+            result.map_err(|_| "Could not read saved characters.".into())
+        }
         #[cfg(not(mobile))]
         Ok(VaultStatus {
             available: false,
@@ -180,6 +233,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             #[cfg(target_os = "ios")]
             let handle = _api.register_ios_plugin(init_plugin_secure_login)?;
             app.manage(SecureLogin::<R> {
+                diagnostic: Mutex::new(None),
                 #[cfg(mobile)]
                 handle,
                 #[cfg(not(mobile))]
@@ -188,4 +242,35 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             Ok(())
         })
         .build()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_accepts_only_known_operations_and_numeric_statuses() {
+        assert_eq!(
+            VaultDiagnostic::from_code(Some("keychain.profile_metadata.-26275")),
+            VaultDiagnostic {
+                operation: "profile_metadata",
+                os_status: Some(-26275)
+            }
+        );
+        for code in [
+            None,
+            Some("EXAMPLE_ACCOUNT"),
+            Some("keychain.EXAMPLE_ACCOUNT.-1"),
+            Some("keychain.list.EXAMPLE_PASSWORD"),
+            Some("keychain.list.1.extra"),
+        ] {
+            assert_eq!(
+                VaultDiagnostic::from_code(code),
+                VaultDiagnostic {
+                    operation: "bridge",
+                    os_status: None
+                }
+            );
+        }
+    }
 }

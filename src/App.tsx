@@ -456,11 +456,14 @@ export default function App() {
       }));
       if (!connectionLogin) editProfile(null);
       else setSettings((previous) => ({ ...previous, user: "", pass: "" }));
-      // Refresh migration status only after the new protected entry is durable.
-      try {
-        setVault(await invoke<VaultStatus>("credential_status"));
-      } catch {
-        setError("Character saved. Restart the app later to refresh the list.");
+      // Only legacy imports need another read: cleanup can leave the old entry.
+      // A refresh failure must not report a successfully saved character as failed.
+      if (!connectionLogin && editing === "legacy") {
+        try {
+          setVault(await invoke<VaultStatus>("credential_status"));
+        } catch {
+          // Keep both labels until the next successful read confirms cleanup.
+        }
       }
     } catch (failure) {
       setError(
@@ -1184,15 +1187,6 @@ export default function App() {
               </span>
             )}
           </div>
-          {active && tab === "chat" && (
-            <button
-              className="text-button"
-              disabled={stopping}
-              onClick={() => setConfirmation("disconnect")}
-            >
-              Disconnect
-            </button>
-          )}
         </div>
       )}
       {pendingLogin && (

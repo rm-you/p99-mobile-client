@@ -128,13 +128,18 @@ import chat exports back into the app.
 
 The app tries to stay connected when you switch apps or lock the screen. Android
 shows an ongoing connection notification while a session is active. Use its
-**Stop** action or the app's **Disconnect** button for a clean logout. Disconnect
+**Stop** action or **Disconnect** on the **Connection** tab for a clean logout. Disconnect
 asks for confirmation. The connection service stops when the session ends.
 
 Android can still suspend networking or stop the app, especially under battery
 restrictions. If the process survives, it can retry the connection. If Android
 ends the process, reopen the app and log in again. Timeline notices identify
 interruptions that may have left gaps in chat. Continuous logging is not guaranteed.
+
+On iPhone, an active session requests a short grace period when you switch apps or
+lock the screen, capped at 25 seconds. iOS can end that time earlier or refuse it.
+Returning to the app or disconnecting releases the request; the app makes no
+background request while disconnected. Longer screen locks can still interrupt chat.
 
 In **Settings**, optional alerts can match incoming tells, guild messages, or up
 to 20 comma-separated keywords. They run while the app is in the background and

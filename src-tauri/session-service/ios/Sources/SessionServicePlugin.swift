@@ -6,13 +6,15 @@ import Tauri
 
 private struct DocumentArgs: Decodable { let text: String; let format: String }
 private struct SessionArgs: Decodable { let sessionId: String; let events: Channel }
+private struct SessionKey: Decodable { let sessionId: String }
 private struct AlertArgs: Decodable { let title: String; let body: String }
 private struct VisibilityEvent: Encodable { let type = "visibility"; let visible: Bool }
 
-/// Native lifecycle and local alerts; no persistent background execution is requested.
+/// Native lifecycle, bounded background grace, and local alerts.
 class SessionServicePlugin: Plugin, UNUserNotificationCenterDelegate {
     private var events: Channel?
     private var observers: [NSObjectProtocol] = []
+    private let backgroundGrace = BackgroundGrace()
 
     override func load(webview: WKWebView) {
         UNUserNotificationCenter.current().delegate = self
@@ -30,17 +32,30 @@ class SessionServicePlugin: Plugin, UNUserNotificationCenterDelegate {
     }
 
     private func visibility(_ visible: Bool) {
+        backgroundGrace.setVisible(visible)
         try? events?.send(VisibilityEvent(visible: visible))
     }
 
-    /// Attach native visibility to Rust without starting any background task or requesting permission.
+    /// Arm bounded grace only for a user-started session, without requesting permission.
     @objc func begin(_ invoke: Invoke) throws {
         let args = try invoke.parseArgs(SessionArgs.self)
         DispatchQueue.main.async {
             self.events = args.events
+            self.backgroundGrace.begin(sessionID: args.sessionId,
+                visible: UIApplication.shared.applicationState == .active)
             self.visibility(UIApplication.shared.applicationState == .active)
+            // These flags describe persistent background support, which iOS lacks.
             invoke.resolve(["supported": false, "active": false,
                 "notifications_enabled": false, "battery_optimized": false])
+        }
+    }
+
+    /// Release any remaining grace when the matching Rust worker finishes.
+    @objc func end(_ invoke: Invoke) throws {
+        let args = try invoke.parseArgs(SessionKey.self)
+        DispatchQueue.main.async {
+            self.backgroundGrace.end(sessionID: args.sessionId)
+            invoke.resolve()
         }
     }
 

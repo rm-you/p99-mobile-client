@@ -8,17 +8,6 @@ private struct Credentials: Codable {
     let pass: String
 }
 private struct ProfileKey: Decodable { let id: String }
-private struct Profile: Codable, Equatable {
-    let id: String
-    let character: String
-    let server: String
-    var valid: Bool {
-        UUID(uuidString: id)?.uuidString.lowercased() == id &&
-        character.range(of: "^[A-Za-z]{1,63}$", options: .regularExpression) != nil &&
-        ["green", "blue", "quarm"].contains(server)
-    }
-    var value: [String: String] { ["id": id, "character": character, "server": server] }
-}
 private struct ProfileEdit: Decodable { let expected: Profile; let profile: Profile }
 private struct ProfileLogin: Codable {
     let id: String
@@ -55,36 +44,15 @@ class SecureLoginPlugin: Plugin {
     @objc func status(_ invoke: Invoke) {
         queue.async {
             do {
-                var probe = self.query()
-                probe[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
-                probe[kSecReturnAttributes as String] = true
-                probe[kSecMatchLimit as String] = kSecMatchLimitAll
-                var result: CFTypeRef?
-                let status = SecItemCopyMatching(probe as CFDictionary, &result)
-                guard status == errSecSuccess || status == errSecItemNotFound else {
-                    NSLog("Secure storage metadata status: %d", status)
-                    throw VaultError.invalid
-                }
-                var profiles = [[String: String]]()
-                if status == errSecSuccess {
-                    guard let entries = result as? [[String: Any]] else { throw VaultError.invalid }
-                    for entry in entries {
-                        guard let data = entry[kSecAttrGeneric as String] as? Data else { throw VaultError.invalid }
-                        let profile = try JSONDecoder().decode(Profile.self, from: data)
-                        guard profile.valid, entry[kSecAttrAccount as String] as? String == profile.id else { throw VaultError.invalid }
-                        profiles.append(profile.value)
-                    }
-                }
-                var legacy = self.query(legacy: true)
-                legacy[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
-                legacy[kSecReturnAttributes as String] = true
-                let oldStatus = SecItemCopyMatching(legacy as CFDictionary, nil)
-                guard [errSecSuccess, errSecInteractionNotAllowed, errSecAuthFailed, errSecItemNotFound].contains(oldStatus) else { throw VaultError.invalid }
+                let profiles = try KeychainMetadata.profiles(matching: self.query())
+                let legacySaved = try KeychainMetadata.exists(matching: self.query(legacy: true))
                 let context = self.context()
                 defer { context.invalidate() }
                 var error: NSError?
                 let available = context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error)
-                invoke.resolve(["available": available, "profiles": profiles, "legacySaved": oldStatus != errSecItemNotFound])
+                invoke.resolve(["available": available, "profiles": profiles.map { $0.value }, "legacySaved": legacySaved])
+            } catch let error as KeychainMetadata.Failure {
+                invoke.reject("Could not inspect saved characters.", code: error.code)
             } catch { invoke.reject("Could not inspect saved characters.") }
         }
     }

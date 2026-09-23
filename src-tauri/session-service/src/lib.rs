@@ -116,14 +116,14 @@ impl<R: Runtime> SessionService<R> {
 
     /// Release the service after the matching Rust worker has closed its connection.
     pub fn end(&self, session_id: &str) {
-        #[cfg(target_os = "android")]
+        #[cfg(mobile)]
         let _: Result<(), _> = self.handle.run_mobile_plugin(
             "end",
             serde_json::json!({
                 "sessionId": session_id
             }),
         );
-        #[cfg(not(target_os = "android"))]
+        #[cfg(not(mobile))]
         let _ = session_id;
     }
 }

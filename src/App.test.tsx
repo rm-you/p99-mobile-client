@@ -545,6 +545,8 @@ describe("connection and chat", () => {
 
   it("requests native shutdown before allowing a new connection", async () => {
     await connect();
+    expect(screen.queryByRole("button", { name: "Disconnect" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Connection" }));
     let stopped!: () => void;
     native.invoke.mockImplementation(
       () =>
@@ -687,6 +689,25 @@ describe("connection and chat", () => {
     expect(
       screen.queryByRole("button", { name: "Save character securely" }),
     ).toBeNull();
+  });
+
+  it("keeps a successful save without an unnecessary vault refresh or restart warning", async () => {
+    await connect(true);
+    const fallback = native.invoke.getMockImplementation()!;
+    native.invoke.mockImplementation((command: string, ...args: unknown[]) =>
+      command === "credential_status"
+        ? Promise.reject("Could not read saved characters.")
+        : fallback(command, ...args),
+    );
+    native.invoke.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Connection" }));
+    await screen.findByRole("button", {
+      name: /Unlock and connect ExampleCharacter/,
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(native.invoke).not.toHaveBeenCalledWith("credential_status");
+    expect(native.invoke).not.toHaveBeenCalledWith("disconnect");
   });
 
   it("offers to update the matching saved entry and keeps the session when saving is cancelled", async () => {
@@ -1213,6 +1234,7 @@ it("does not start a login after disconnecting during history loading", async ()
   });
   fireEvent.click(screen.getByRole("button", { name: "Login" }));
   await waitFor(() => expect(finishHistory).toBeTypeOf("function"));
+  fireEvent.click(screen.getByRole("button", { name: "Connection" }));
   fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
   fireEvent.click(
     within(screen.getByRole("dialog")).getByRole("button", {
