@@ -27,7 +27,7 @@ targets:
           - "-Xlinker"
           - "$(PROJECT_DIR)/native-test-entitlements.plist"
   P99NativeTests:
-    type: bundle.unit-testing
+    type: bundle.unit-test
     platform: iOS
     sources:
       - NativeTests.swift

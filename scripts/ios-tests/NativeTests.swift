@@ -18,7 +18,12 @@ final class KeychainMetadataTests: XCTestCase {
     }
 
     private func insert(_ profile: Profile, access: SecAccessControl? = nil) throws -> OSStatus {
+        // A headless test must fail/skip unsupported authentication, never wait for a prompt.
+        let context = LAContext()
+        context.interactionNotAllowed = true
+        defer { context.invalidate() }
         var entry = query!
+        entry[kSecUseAuthenticationContext as String] = context
         entry[kSecAttrAccount as String] = profile.id
         entry[kSecAttrGeneric as String] = try JSONEncoder().encode(profile)
         // Deliberately not a valid login tuple: listing must never decode password data.

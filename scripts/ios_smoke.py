@@ -14,6 +14,8 @@ def simctl(*args):
 def main():
     output = Path("ios-test-output")
     output.mkdir(exist_ok=True)
+    # Validate the test project before paying for a cold Simulator boot.
+    subprocess.run(["xcodegen", "generate", "--spec", "scripts/ios-tests/project.yml"], check=True)
     candidates = []
     for app in Path("src-tauri/gen/apple/build").rglob("*.app"):
         info = app / "Info.plist"
@@ -68,7 +70,6 @@ def main():
         if not running:
             raise RuntimeError("Application did not remain running after launch")
         simctl("io", device, "screenshot", str(output / "launch.png"))
-        subprocess.run(["xcodegen", "generate", "--spec", "scripts/ios-tests/project.yml"], check=True)
         try:
             subprocess.run([
                 "xcodebuild", "test", "-project", "scripts/ios-tests/P99Smoke.xcodeproj",
