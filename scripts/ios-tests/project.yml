@@ -8,6 +8,38 @@ settings:
     GENERATE_INFOPLIST_FILE: YES
     SWIFT_VERSION: "5.0"
 targets:
+  P99NativeHost:
+    type: application
+    platform: iOS
+    sources: [NativeHost.swift]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.rmyou.p99mobile.native-tests
+        INFOPLIST_KEY_NSFaceIDUsageDescription: Test access to synthetic saved credentials.
+        "OTHER_LDFLAGS[sdk=iphonesimulator*]":
+          - "$(inherited)"
+          - "-Xlinker"
+          - "-sectcreate"
+          - "-Xlinker"
+          - "__TEXT"
+          - "-Xlinker"
+          - "__entitlements"
+          - "-Xlinker"
+          - "$(PROJECT_DIR)/native-test-entitlements.plist"
+  P99NativeTests:
+    type: bundle.unit-testing
+    platform: iOS
+    sources:
+      - NativeTests.swift
+      - ../../src-tauri/secure-login/ios/Sources/KeychainMetadata.swift
+      - ../../src-tauri/session-service/ios/Sources/BackgroundGrace.swift
+    dependencies:
+      - target: P99NativeHost
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.rmyou.p99mobile.native-tests.unit
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/P99NativeHost.app/P99NativeHost"
+        BUNDLE_LOADER: "$(TEST_HOST)"
   P99Smoke:
     type: bundle.ui-testing
     platform: iOS
@@ -20,5 +52,6 @@ schemes:
     build:
       targets:
         P99Smoke: [test]
+        P99NativeTests: [test]
     test:
-      targets: [P99Smoke]
+      targets: [P99Smoke, P99NativeTests]

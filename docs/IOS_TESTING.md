@@ -8,7 +8,11 @@ connections are used in CI. The first physical test target is an iPhone 15 Pro M
 
 The workflow builds the full release app, including both Swift plugins, with
 bundled web assets. It launches a disposable iPhone simulator, checks settings
-persistence and resume through XCTest, and captures screenshots/results. It then
+persistence and resume through XCTest, and captures screenshots/results. An isolated
+native test host exercises populated Keychain metadata and background-grace cleanup
+using synthetic values, without linking the game networking code. The protected-item
+test is skipped if the test device cannot create passcode-protected items; a skip
+does not validate Face ID or passcode access on a physical device. The workflow then
 builds a device IPA and checks its identity, Face ID metadata, and privacy manifest.
 Device packaging still runs after a UI-test failure to collect both results;
 the overall workflow and TestFlight gate require all checks to pass. Restart tests
@@ -53,8 +57,15 @@ No game credentials were entered and no game connection was attempted.
 
 The same run built a 4.6 MB unsigned ARM64 device IPA with iOS 15 minimum,
 the correct app identity, Face ID purpose text, and the app privacy manifest.
-The device executable contains no Simulator test identity. AltStore re-signing,
-physical-device behavior, and TestFlight signing/upload remain unverified.
+The device executable contains no Simulator test identity. AltStore re-signing
+remains unverified.
+
+The first signed beta, **1.1.0 (1)**, subsequently uploaded successfully in
+[this TestFlight run](https://github.com/rm-you/p99-mobile-client/actions/runs/35879323269/attempts/2)
+and the owner confirmed installation and a working game connection on iPhone.
+That test also exposed a saved-character list failure after saving/restarting and
+a connection interruption shortly after screen lock. The metadata query changes
+and background grace described below still need verification in an updated beta.
 
 Local checks also passed: 64 frontend tests, 37 Rust tests, Android Clippy with
 warnings denied, production frontend build, formatting, and 10 packaging-script
@@ -124,8 +135,14 @@ and [Apple encryption information](https://developer.apple.com/help/app-store-co
 
 ## Native behavior and remaining device checks
 
-The iOS plugin forwards native visibility to Rust without starting a background
-task. Delivery waits until both the native app and WebView are visible. Existing
+The iOS plugin forwards native visibility to Rust and requests one bounded execution
+extension when an active session loses foreground access. It releases the extension
+after **25 seconds**, or sooner on iOS expiry, return to the foreground, or session
+end. An idle app requests no time. The plugin does not renew an expired or refused
+request while still in the background. The OS may grant less time or none; this is
+not persistent background support. See [Apple's execution-time guidance](https://developer.apple.com/documentation/uikit/extending-your-app-s-background-execution-time).
+
+Delivery waits until both the native app and WebView are visible. Existing
 connection health aging and the networking crate's retry loop handle interrupted
 sessions; in-memory credentials and buffers do not survive process termination.
 Opening the app after termination never automatically unlocks a saved account.
@@ -136,7 +153,13 @@ after iOS suspends the process. The app keeps best effort while executable and d
 not deliberately disconnect merely because it enters the background.
 
 Saved-character edits that keep the account/password use one native Keychain
-operation and one authentication context, then invalidate it. Simulator startup
+operation and one authentication context, then invalidate it. Saving a new entry
+does not explicitly authenticate; accessing its protected credentials later requires
+user presence (Face ID or device passcode). Listing uses a separate noninteractive
+authentication context and requests attributes only, never password data. Failed
+lookups log only the operation and OS status, not labels or credentials. No Keychain
+service or storage format changes, so existing entries remain eligible for lookup.
+Simulator startup
 and UI tests do not establish real Face ID/passcode behavior. Use the device matrix
 in [IOS_PARITY.md](IOS_PARITY.md) for saved-login authentication, real-server chat,
 keyboard/reply gestures, item links, notifications, screen lock, network changes,
