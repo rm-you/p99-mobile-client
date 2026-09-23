@@ -38,6 +38,25 @@ def main():
     subprocess.run(["codesign", "--force", "--sign", "-", "--generate-entitlement-der",
                     "--entitlements", str(entitlements), str(app)], check=True)
     subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True)
+    derived = Path("src-tauri/target/ios-native-tests").resolve()
+    test_project = [
+        "xcodebuild", "-project", "scripts/ios-tests/P99Smoke.xcodeproj",
+        "-scheme", "P99Smoke", "-derivedDataPath", str(derived),
+        "CODE_SIGNING_ALLOWED=NO",
+    ]
+    # Compile and verify the host identity before booting or running tests.
+    subprocess.run([*test_project, "build-for-testing", "-destination",
+                    "generic/platform=iOS Simulator"], check=True, timeout=300)
+    native_host = derived / "Build/Products/Debug-iphonesimulator/P99NativeHost.app"
+    host_binary = (native_host / "P99NativeHost").read_bytes()
+    identity = b"P99SIMTEST.io.github.rmyou.p99mobile.native-tests"
+    if identity not in host_binary:
+        raise RuntimeError("Native test host is missing its embedded Simulator Keychain identity")
+    for test_bundle in native_host.glob("PlugIns/*.xctest"):
+        subprocess.run(["codesign", "--force", "--sign", "-", str(test_bundle)], check=True)
+    subprocess.run(["codesign", "--force", "--sign", "-", "--generate-entitlement-der",
+                    "--entitlements", str(entitlements), str(native_host)], check=True)
+    subprocess.run(["codesign", "--verify", "--deep", "--strict", str(native_host)], check=True)
     runtimes = json.loads(simctl("list", "runtimes", "--json"))["runtimes"]
     runtime = next(
         r for r in reversed(runtimes)
@@ -72,10 +91,8 @@ def main():
         simctl("io", device, "screenshot", str(output / "launch.png"))
         try:
             subprocess.run([
-                "xcodebuild", "test", "-project", "scripts/ios-tests/P99Smoke.xcodeproj",
-                "-scheme", "P99Smoke", "-destination", "id=" + device,
+                *test_project, "test-without-building", "-destination", "id=" + device,
                 "-resultBundlePath", str(output / "smoke.xcresult"),
-                "CODE_SIGNING_ALLOWED=NO",
             ], check=True, timeout=300)
         finally:
             result = output / "smoke.xcresult"
