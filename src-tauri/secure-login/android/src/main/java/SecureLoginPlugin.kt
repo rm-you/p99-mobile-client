@@ -126,6 +126,7 @@ class SecureLoginPlugin(private val activity: Activity) : Plugin(activity) {
         }
         finish(invoke, JSObject().apply {
             put("available", available()); put("profiles", profiles)
+            put("recoveryAvailable", false)
             put("legacySaved", legacyFile.baseFile.exists() || File(legacyFile.baseFile.path + ".bak").exists())
         })
     }

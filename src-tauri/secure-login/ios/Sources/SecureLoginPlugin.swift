@@ -23,6 +23,7 @@ class SecureLoginPlugin: Plugin {
     private let queue = DispatchQueue(label: "p99.secure-login")
     private let service = "io.github.rmyou.p99mobile.login.v2"
     private let legacyService = "io.github.rmyou.p99mobile.login.v1"
+    private let indexStore = ProfileIndexStore()
 
     private func query(id: String? = nil, legacy: Bool = false) -> [String: Any] {
         var value: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
@@ -40,20 +41,49 @@ class SecureLoginPlugin: Plugin {
         return context
     }
 
-    /// Read only nonsecret attributes. Never request password data when listing profiles.
+    private func index() throws -> ProfileIndex {
+        try indexStore.load { try KeychainMetadata.exists(matching: self.query()) }
+    }
+
+    /// Read the separate nonsecret index without touching protected profile attributes.
     @objc func status(_ invoke: Invoke) {
         queue.async {
             do {
-                let profiles = try KeychainMetadata.profiles(matching: self.query())
+                let index = try self.index()
                 let legacySaved = try KeychainMetadata.exists(matching: self.query(legacy: true))
                 let context = self.context()
                 defer { context.invalidate() }
                 var error: NSError?
                 let available = context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error)
-                invoke.resolve(["available": available, "profiles": profiles.map { $0.value }, "legacySaved": legacySaved])
+                invoke.resolve(["available": available, "profiles": index.profiles.map { $0.value },
+                                "legacySaved": legacySaved, "recoveryAvailable": index.recoveryAvailable])
             } catch let error as KeychainMetadata.Failure {
                 invoke.reject("Could not inspect saved characters.", code: error.code)
             } catch { invoke.reject("Could not inspect saved characters.") }
+        }
+    }
+
+    /// Explicitly authorize legacy label recovery; passwords never leave their existing items.
+    @objc func recoverProfiles(_ invoke: Invoke) {
+        queue.async {
+            let context = self.context()
+            context.localizedReason = "Restore your saved character list"
+            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: context.localizedReason) { authorized, _ in
+                self.queue.async {
+                    defer { context.invalidate() }
+                    guard authorized else {
+                        invoke.reject("Saved characters were not restored. Unlock your device and try again.")
+                        return
+                    }
+                    do {
+                        let profiles = try KeychainMetadata.profiles(matching: self.query(), context: context)
+                        try self.indexStore.store(ProfileIndex(profiles: profiles, recoveryAvailable: false))
+                        invoke.resolve()
+                    } catch let error as KeychainMetadata.Failure {
+                        invoke.reject("Saved characters were not restored. Unlock your device and try again.", code: error.code)
+                    } catch { invoke.reject("Saved characters were not restored. Unlock your device and try again.") }
+                }
+            }
         }
     }
 
@@ -62,6 +92,14 @@ class SecureLoginPlugin: Plugin {
         guard login.profile.valid, !login.user.trimmingCharacters(in: .whitespaces).isEmpty,
               !login.pass.isEmpty, login.user.utf8.count <= 1024, login.pass.utf8.count <= 1024,
               !login.user.contains("\0"), !login.pass.contains("\0") else { throw VaultError.invalid }
+        let index = try self.index()
+        let profiles = index.profiles.filter { $0.id != login.id } + [login.profile]
+        try indexStore.mutate(index, profiles: profiles) {
+            try self.writeCredentials(login, context: context)
+        }
+    }
+
+    private func writeCredentials(_ login: ProfileLogin, context: LAContext) throws {
         let data = try JSONEncoder().encode(login)
         let metadata = try JSONEncoder().encode(login.profile)
         var error: Unmanaged<CFError>?
@@ -165,12 +203,20 @@ class SecureLoginPlugin: Plugin {
     }
 
     private func deleteEntry(_ invoke: Invoke, id: String?, legacy: Bool) {
-        let status = SecItemDelete(query(id: id, legacy: legacy) as CFDictionary)
-        guard status == errSecSuccess || status == errSecItemNotFound else {
+        do {
+            let remove = {
+                let status = SecItemDelete(self.query(id: id, legacy: legacy) as CFDictionary)
+                guard status == errSecSuccess || status == errSecItemNotFound else { throw VaultError.invalid }
+            }
+            if legacy { try remove() }
+            else {
+                let index = try self.index()
+                try indexStore.mutate(index, profiles: index.profiles.filter { $0.id != id }, credentials: remove)
+            }
+            invoke.resolve()
+        } catch {
             invoke.reject("Could not delete the saved character.")
-            return
         }
-        invoke.resolve()
     }
 }
 private enum VaultError: Error { case invalid }

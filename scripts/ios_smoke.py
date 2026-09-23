@@ -98,10 +98,16 @@ def main():
             result = output / "smoke.xcresult"
             if result.exists():
                 with (output / "test-summary.json").open("w") as summary:
-                    subprocess.run(["xcrun", "xcresulttool", "get", "test-results", "summary",
-                        "--path", str(result)], stdout=summary, check=False, timeout=30)
-                subprocess.run(["xcrun", "xcresulttool", "export", "attachments", "--path", str(result),
-                    "--output-path", str(output / "attachments")], check=False, timeout=30)
+                    try:
+                        subprocess.run(["xcrun", "xcresulttool", "get", "test-results", "summary",
+                            "--path", str(result)], stdout=summary, check=False, timeout=60)
+                    except subprocess.TimeoutExpired:
+                        print("Summary export timed out; retaining the original XCTest result.", flush=True)
+                try:
+                    subprocess.run(["xcrun", "xcresulttool", "export", "attachments", "--path", str(result),
+                        "--output-path", str(output / "attachments")], check=False, timeout=60)
+                except subprocess.TimeoutExpired:
+                    print("Attachment export timed out; retaining the original XCTest result.", flush=True)
         (output / "build.json").write_text(json.dumps({
             "bundle": bundle, "version": info["CFBundleShortVersionString"],
             "runtime": runtime["name"], "process_alive": True,

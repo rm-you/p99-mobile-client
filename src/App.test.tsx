@@ -79,6 +79,7 @@ beforeEach(() => {
         available: true,
         profiles: savedProfiles,
         legacySaved: false,
+        recoveryAvailable: false,
       });
     if (command === "save_profile") {
       const { character, server, id } = args.request;
@@ -270,6 +271,86 @@ describe("Quarm server selection", () => {
 });
 
 describe("connection and chat", () => {
+  it("restores old saved labels only after an explicit unlock action", async () => {
+    const fallback = native.invoke.getMockImplementation()!;
+    const locked = {
+      available: true,
+      profiles: [],
+      legacySaved: false,
+      recoveryAvailable: true,
+    };
+    native.invoke.mockImplementation((command: string, ...args: unknown[]) => {
+      if (command === "credential_status") return Promise.resolve(locked);
+      if (command === "recover_profiles")
+        return Promise.resolve({
+          ...locked,
+          profiles: [profile],
+          recoveryAvailable: false,
+        });
+      return fallback(command, ...args);
+    });
+    render(<App />);
+    const restore = await screen.findByRole("button", {
+      name: "Restore saved characters",
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(native.invoke).not.toHaveBeenCalledWith("recover_profiles");
+    fireEvent.click(restore);
+    expect(
+      await screen.findByRole("button", {
+        name: /Unlock and connect SavedCharacter/,
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Restore saved characters" }),
+    ).toBeNull();
+    expect(native.invoke).toHaveBeenCalledWith("recover_profiles");
+    expect(
+      native.invoke.mock.calls.some(
+        ([command]) => command === "connect" || command === "connect_saved",
+      ),
+    ).toBe(false);
+    expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe(
+      "",
+    );
+  });
+
+  it("keeps existing labels and allows retry when recovery is canceled", async () => {
+    const fallback = native.invoke.getMockImplementation()!;
+    native.invoke.mockImplementation((command: string, ...args: unknown[]) => {
+      if (command === "credential_status")
+        return Promise.resolve({
+          available: true,
+          profiles: [profile],
+          legacySaved: false,
+          recoveryAvailable: true,
+        });
+      if (command === "recover_profiles") return Promise.reject("Canceled");
+      return fallback(command, ...args);
+    });
+    render(<App />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Restore saved characters" }),
+    );
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Saved characters were not restored",
+    );
+    expect(
+      screen.getByRole("button", { name: /Unlock and connect SavedCharacter/ }),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: "Restore saved characters" })
+        .hasAttribute("disabled"),
+    ).toBe(false);
+    expect(
+      native.invoke.mock.calls.some(
+        ([command]) =>
+          command === "forget_profile" || command === "connect_saved",
+      ),
+    ).toBe(false);
+  });
+
   it("shows connection stages and health without packet diagnostics or counts", async () => {
     await connect();
     const health = () =>
@@ -303,13 +384,20 @@ describe("connection and chat", () => {
     expect(progress().getAttribute("aria-valuenow")).toBe("100");
     send({ type: "status", data: sessionStatus("connected") });
     expect(screen.queryByRole("progressbar")).toBeNull();
-    expect(health().textContent).toBe("Connection healthy");
-    expect(health().closest(".connection-feedback.online")).not.toBeNull();
+    expect(
+      screen.queryByRole("status", { name: "Connection health" }),
+    ).toBeNull();
+    expect(document.querySelector(".chat-footer")).toBeNull();
+    expect(
+      screen.getByRole("status", { name: "Connection status" }).textContent,
+    ).toBe("Connected");
     send({
       type: "diagnostic",
       data: "Zone session: 12345 application packets, 67890 communication records",
     });
-    expect(health().textContent).toBe("Connection healthy");
+    expect(
+      screen.queryByRole("status", { name: "Connection health" }),
+    ).toBeNull();
     expect(document.querySelector(".connection-status.online")).not.toBeNull();
     send({
       type: "reconnecting",
@@ -382,16 +470,52 @@ describe("connection and chat", () => {
     ).toBe("Waiting for server…");
     send({ type: "status", data: sessionStatus("connected") });
     expect(
-      screen.getByRole("status", { name: "Connection health" }).textContent,
-    ).toBe("Connection healthy");
+      screen.queryByRole("status", { name: "Connection health" }),
+    ).toBeNull();
+    expect(document.querySelector(".connection-status.online")).not.toBeNull();
   });
 
   it("sends credentials only through native IPC and clears the password input", async () => {
-    await connect();
+    render(<App />);
+    await screen.findByRole("button", { name: "Login" });
+    fireEvent.change(screen.getByLabelText("Login account"), {
+      target: { value: "EXAMPLE_ACCOUNT" },
+    });
+    const password = screen.getByLabelText("Password") as HTMLInputElement;
+    fireEvent.change(password, { target: { value: "EXAMPLE_PASSWORD" } });
+    expect(password.type).toBe("password");
+    fireEvent.click(screen.getByRole("button", { name: "Show password" }));
+    expect(password.type).toBe("text");
+    expect(password.value).toBe("EXAMPLE_PASSWORD");
+    expect(native.invoke.mock.calls.some(([name]) => name === "connect")).toBe(
+      false,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Hide password" }));
+    expect(password.type).toBe("password");
+    fireEvent.click(screen.getByRole("button", { name: "Show password" }));
+    fireEvent.change(screen.getByLabelText("Character name"), {
+      target: { value: "ExampleCharacter" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Login" }));
+    await waitFor(() =>
+      expect(native.invoke).toHaveBeenCalledWith("connect", {
+        request: {
+          user: "EXAMPLE_ACCOUNT",
+          pass: "EXAMPLE_PASSWORD",
+          character: "ExampleCharacter",
+          server: "green",
+        },
+        onEvent: expect.anything(),
+      }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Not now" }));
     expect(screen.getByText("Connecting")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Connection" }));
     expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe(
       "",
+    );
+    expect((screen.getByLabelText("Password") as HTMLInputElement).type).toBe(
+      "password",
     );
     expect(localStorage.length).toBe(0);
   });
@@ -800,7 +924,12 @@ describe("connection and chat", () => {
     const fallback = native.invoke.getMockImplementation()!;
     native.invoke.mockImplementation((command: string, ...args: unknown[]) =>
       command === "credential_status"
-        ? Promise.resolve({ available: true, profiles: [], legacySaved: true })
+        ? Promise.resolve({
+            available: true,
+            profiles: [],
+            legacySaved: true,
+            recoveryAvailable: false,
+          })
         : fallback(command, ...args),
     );
     render(<App />);

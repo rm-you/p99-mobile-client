@@ -18,8 +18,10 @@ and signing setup. The full app builds and passes packaged startup, settings
 persistence, and resume tests on an iPhone 15 Pro Max Simulator running iOS 26.5.
 Simulated Keychain identity fixes the baseline's saved-login startup error.
 The first TestFlight beta has now been installed and connected on the owner's
-iPhone. Saved-character listing and short screen locks exposed issues; updated
-metadata lookup and bounded background grace await another device test. The catalog
+iPhone. Saved-character listing returned -25308 on the physical device despite passing
+in Simulator. A separate nonsecret label index and explicit recovery of existing entries
+address that authentication boundary; physical restart/unlock validation remains required.
+Bounded background grace also needs screen-lock testing. The catalog
 below records the pre-implementation audit.
 
 ## Baseline feature catalog

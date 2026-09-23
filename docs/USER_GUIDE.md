@@ -15,6 +15,7 @@
 Log out of the graphical game client before connecting. In **Connection**, choose
 **P99 Green**, **P99 Blue**, or **Quarm** and enter your account, password, and
 existing character's name. Tap **Login** to join the zone where you left them.
+The eye button shows or hides the password you are typing.
 
 P99 uses an **EQEmulator login-server account**. Quarm uses a **TAKP login-server
 account**. The sign-in progress bar advances as connection steps finish; its
@@ -30,6 +31,8 @@ saved character and authenticate with your device to connect. You can always use
 - **Delete:** swipe left or tap the trash icon, then confirm.
 - **Upgrade an older saved login:** **Previous saved login** lets you assign it a
   character and server. The old entry remains until the new one is saved successfully.
+- **Restore older iPhone entries:** if **Restore saved characters** appears, tap it
+  and unlock once to rebuild the list. This does not connect to the game.
 
 Saved credentials are encrypted and require supported device authentication to
 unlock. Character and server labels remain visible while locked. See
@@ -45,6 +48,8 @@ not offered in the filter list.
 Chat uses classic EQ colors with yellow-orange OOC. In **Settings**, choose text
 sizes from 12–22, compact spacing (on by default), or a higher-contrast palette.
 The header shows the full zone name, and empty guild MOTDs are hidden.
+Connection health appears in the top-right indicator. The bottom status area is
+shown only for sign-in progress, interruptions, or disconnection.
 
 Scroll up to pause automatic following. **Latest messages** takes you back to the
 bottom and counts new arrivals. The Chat badge and unread-tell shortcut show
@@ -169,7 +174,8 @@ Android 7–10 requires an enrolled strong biometric. You can connect without sa
 
 **A saved login no longer unlocks.** Changing device security settings can make
 its key unavailable. Edit the entry with both account and password, or delete it
-and save it again. Uninstalling also removes saved credentials.
+and save it again. Android uninstall removes saved credentials; iOS Keychain entries
+may survive reinstalling the app. Use the entry's Delete action to remove them.
 
 **Background chat or notifications stop.** Check Android's battery restrictions,
 notification permission, and the app's notification channels. Denying notification

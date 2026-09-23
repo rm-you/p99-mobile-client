@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Keep iOS saved-character labels in a separate device-only Keychain index, with
+  explicit unlock recovery for existing entries and interrupted saves.
+- Add a password visibility toggle and hide the redundant healthy-connection footer.
+
 - Add iOS native lifecycle events, opt-in local chat notifications, and a single
   Keychain authorization for edits that retain account credentials.
 - Add hosted iOS Simulator checks, unsigned device candidates, and a manually

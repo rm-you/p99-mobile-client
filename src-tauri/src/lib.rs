@@ -132,6 +132,21 @@ async fn credential_status(app: tauri::AppHandle) -> Result<VaultStatus, String>
         .map_err(|_| "Unable to check saved characters")?
 }
 
+/// Restore labels for existing protected iOS logins only after an explicit user action.
+#[tauri::command]
+async fn recover_profiles(app: tauri::AppHandle) -> Result<VaultStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let operations = app.state::<ProfileOperations>();
+        let _guard = operations
+            .0
+            .lock()
+            .map_err(|_| "Saved characters unavailable")?;
+        app.state::<SecureLogin<tauri::Wry>>().recover_profiles()
+    })
+    .await
+    .map_err(|_| "Unable to restore saved characters")?
+}
+
 /// Save one complete tuple; edits can retain credentials without returning them to JavaScript.
 #[tauri::command]
 async fn save_profile(request: SaveProfile, app: tauri::AppHandle) -> Result<SavedProfile, String> {
@@ -297,6 +312,7 @@ pub fn run() {
             send_chat,
             set_chat_visible,
             credential_status,
+            recover_profiles,
             save_profile,
             forget_profile,
             forget_legacy,
