@@ -191,10 +191,15 @@ mod tests {
         let path = dir.path().join("settings.json");
         let store = SettingsStore::new(path.clone());
         assert_eq!(store.load().unwrap().channels.len(), ChatChannel::ALL.len());
+        assert!(store.load().unwrap().experience.history_enabled);
         let mut settings = Settings {
             _legacy_character: "ExampleCharacter".into(),
             channels: vec![ChatChannel::Guild, ChatChannel::Tell],
             _legacy_filters_open: true,
+            experience: crate::experience::Experience {
+                history_enabled: false,
+                ..Default::default()
+            },
             ..Settings::default()
         };
         store.save(settings.clone()).unwrap();
@@ -204,6 +209,7 @@ mod tests {
         assert!(reloaded.channels == [ChatChannel::Auction, ChatChannel::Ooc]);
         assert!(!reloaded._legacy_filters_open);
         assert!(reloaded._legacy_character.is_empty());
+        assert!(!reloaded.experience.history_enabled);
     }
     #[test]
     fn cached_character_is_not_returned_to_the_form_or_saved_again() {
@@ -220,6 +226,7 @@ mod tests {
             fs::write(&path, serde_json::to_vec(&old).unwrap()).unwrap();
             let settings = store.load().unwrap();
             let returned = serde_json::to_value(&settings).unwrap();
+            assert!(settings.experience.history_enabled);
             assert!(returned.get("character").is_none());
             store.save(settings).unwrap();
             assert!(!fs::read_to_string(&path)

@@ -19,6 +19,7 @@ private struct Profile: Codable, Equatable {
     }
     var value: [String: String] { ["id": id, "character": character, "server": server] }
 }
+private struct ProfileEdit: Decodable { let expected: Profile; let profile: Profile }
 private struct ProfileLogin: Codable {
     let id: String
     let character: String
@@ -60,7 +61,10 @@ class SecureLoginPlugin: Plugin {
                 probe[kSecMatchLimit as String] = kSecMatchLimitAll
                 var result: CFTypeRef?
                 let status = SecItemCopyMatching(probe as CFDictionary, &result)
-                guard status == errSecSuccess || status == errSecItemNotFound else { throw VaultError.invalid }
+                guard status == errSecSuccess || status == errSecItemNotFound else {
+                    NSLog("Secure storage metadata status: %d", status)
+                    throw VaultError.invalid
+                }
                 var profiles = [[String: String]]()
                 if status == errSecSuccess {
                     guard let entries = result as? [[String: Any]] else { throw VaultError.invalid }
@@ -85,36 +89,71 @@ class SecureLoginPlugin: Plugin {
         }
     }
 
-    /// Replace both the label and protected tuple atomically, preserving other entries.
+    /// Persist both the visible label and protected tuple with the supplied authorization.
+    private func write(_ login: ProfileLogin, context: LAContext) throws {
+        guard login.profile.valid, !login.user.trimmingCharacters(in: .whitespaces).isEmpty,
+              !login.pass.isEmpty, login.user.utf8.count <= 1024, login.pass.utf8.count <= 1024,
+              !login.user.contains("\0"), !login.pass.contains("\0") else { throw VaultError.invalid }
+        let data = try JSONEncoder().encode(login)
+        let metadata = try JSONEncoder().encode(login.profile)
+        var error: Unmanaged<CFError>?
+        guard let access = SecAccessControlCreateWithFlags(nil,
+            kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly, .userPresence, &error) else { throw VaultError.invalid }
+        var add = query(id: login.id)
+        add[kSecAttrAccessControl as String] = access
+        add[kSecAttrGeneric as String] = metadata
+        add[kSecValueData as String] = data
+        var status = SecItemAdd(add as CFDictionary, nil)
+        if status == errSecDuplicateItem {
+            var update = query(id: login.id)
+            update[kSecUseAuthenticationContext as String] = context
+            status = SecItemUpdate(update as CFDictionary,
+                [kSecValueData as String: data, kSecAttrGeneric as String: metadata] as CFDictionary)
+        }
+        guard status == errSecSuccess else { throw VaultError.invalid }
+    }
+
+    /// New credentials replace only the selected profile.
     @objc func save(_ invoke: Invoke) throws {
         let login = try invoke.parseArgs(ProfileLogin.self)
         queue.async {
             let context = self.context()
             defer { context.invalidate() }
             do {
-                guard login.profile.valid, !login.user.trimmingCharacters(in: .whitespaces).isEmpty,
-                      !login.pass.isEmpty, login.user.utf8.count <= 1024, login.pass.utf8.count <= 1024,
-                      !login.user.contains("\0"), !login.pass.contains("\0") else { throw VaultError.invalid }
-                let data = try JSONEncoder().encode(login)
-                let metadata = try JSONEncoder().encode(login.profile)
-                var error: Unmanaged<CFError>?
-                guard let access = SecAccessControlCreateWithFlags(nil,
-                    kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly, .userPresence, &error) else { throw VaultError.invalid }
-                var add = self.query(id: login.id)
-                add[kSecAttrAccessControl as String] = access
-                add[kSecAttrGeneric as String] = metadata
-                add[kSecValueData as String] = data
-                var status = SecItemAdd(add as CFDictionary, nil)
-                if status == errSecDuplicateItem {
-                    var update = self.query(id: login.id)
-                    update[kSecUseAuthenticationContext as String] = context
-                    status = SecItemUpdate(update as CFDictionary,
-                        [kSecValueData as String: data, kSecAttrGeneric as String: metadata] as CFDictionary)
-                }
-                guard status == errSecSuccess else { throw VaultError.invalid }
+                try self.write(login, context: context)
                 invoke.resolve()
             } catch { invoke.reject("Character was not saved.") }
         }
+    }
+
+    /// Keep credentials inside one native operation and invalidate authorization immediately afterward.
+    @objc func updateProfile(_ invoke: Invoke) throws {
+        let edit = try invoke.parseArgs(ProfileEdit.self)
+        guard edit.expected.valid, edit.profile.valid,
+              edit.expected.id == edit.profile.id else { throw VaultError.invalid }
+        queue.async {
+            let context = self.context()
+            defer { context.invalidate() }
+            do {
+                let data = try self.read(id: edit.expected.id, legacy: false, context: context)
+                let login = try JSONDecoder().decode(ProfileLogin.self, from: data)
+                guard login.profile == edit.expected else { throw VaultError.invalid }
+                let updated = ProfileLogin(id: edit.profile.id, character: edit.profile.character,
+                    server: edit.profile.server, user: login.user, pass: login.pass)
+                try self.write(updated, context: context)
+                invoke.resolve()
+            } catch { invoke.reject("Character was not saved.") }
+        }
+    }
+
+    private func read(id: String?, legacy: Bool, context: LAContext) throws -> Data {
+        var query = self.query(id: id, legacy: legacy)
+        query[kSecReturnData as String] = true
+        query[kSecUseAuthenticationContext as String] = context
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data else { throw VaultError.invalid }
+        return data
     }
 
     @objc func unlock(_ invoke: Invoke) throws {
@@ -132,12 +171,7 @@ class SecureLoginPlugin: Plugin {
         let context = self.context()
         defer { context.invalidate() }
         do {
-            var query = self.query(id: id, legacy: legacy)
-            query[kSecReturnData as String] = true
-            query[kSecUseAuthenticationContext as String] = context
-            var result: CFTypeRef?
-            guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-                  let data = result as? Data else { throw VaultError.invalid }
+            let data = try self.read(id: id, legacy: legacy, context: context)
             if legacy {
                 let login = try JSONDecoder().decode(Credentials.self, from: data)
                 invoke.resolve(["user": login.user, "pass": login.pass])

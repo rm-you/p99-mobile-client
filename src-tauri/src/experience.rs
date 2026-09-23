@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// Device preferences contain no login secrets. History and alerts are opt-in.
+/// Device preferences contain no login secrets. History defaults on; alerts are opt-in.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Experience {
@@ -22,7 +22,7 @@ impl Default for Experience {
             text_size: 16,
             compact: true,
             high_contrast: false,
-            history_enabled: false,
+            history_enabled: true,
             history_days: 7,
             history_limit: 5000,
             notify_tells: false,
@@ -58,16 +58,12 @@ impl Experience {
 mod tests {
     use super::*;
     #[test]
-    fn migrated_preferences_do_not_enable_storage_or_notifications() {
+    fn missing_preferences_enable_history_but_not_notifications() {
         let old: Experience = serde_json::from_str("{}").unwrap();
         old.validate().unwrap();
         assert!(old.compact);
-        assert!(
-            !old.history_enabled
-                && !old.notify_tells
-                && !old.notify_guild
-                && !old.notification_previews
-        );
+        assert!(old.history_enabled);
+        assert!(!old.notify_tells && !old.notify_guild && !old.notification_previews);
         assert!(old.notify_keywords.is_empty());
     }
     #[test]

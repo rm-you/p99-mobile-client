@@ -320,18 +320,12 @@ mod tests {
         serde_json::json!({"type":"chat","session_id":"synthetic","message_id":id,"character":"ExampleCharacter","sender":"ExampleFriend","channel":7,"channel_name":"tell","text":"Example message","item_links":[{"body":"synthetic","item_id":123}]})
     }
     #[test]
-    fn retention_is_opt_in_deduplicated_and_isolated() {
+    fn retention_defaults_on_is_deduplicated_and_can_be_disabled() {
         let d = tempfile::tempdir().unwrap();
         let p = d.path().join("history.sqlite");
         let s = ChatStore::new(p.clone(), Experience::default());
         s.record(&owner("green"), &record(1), false).unwrap();
-        assert!(!p.exists());
-        s.configure(Experience {
-            history_enabled: true,
-            ..Experience::default()
-        })
-        .unwrap();
-        s.record(&owner("green"), &record(1), false).unwrap();
+        assert!(p.exists());
         s.record(&owner("green"), &record(1), false).unwrap();
         s.record(&owner("blue"), &record(2), false).unwrap();
         let mut quarm = record(1);
@@ -343,6 +337,14 @@ mod tests {
         assert_eq!(rows, vec![record(1)]);
         assert_eq!(reopened.load(&owner("quarm"), 1500).unwrap(), vec![quarm]);
         assert_eq!(reopened.profiles().unwrap().len(), 3);
+        reopened
+            .configure(Experience {
+                history_enabled: false,
+                ..Experience::default()
+            })
+            .unwrap();
+        reopened.record(&owner("green"), &record(3), false).unwrap();
+        assert_eq!(reopened.load(&owner("green"), 1500).unwrap(), rows);
         reopened.clear().unwrap();
         assert!(reopened.profiles().unwrap().is_empty());
     }

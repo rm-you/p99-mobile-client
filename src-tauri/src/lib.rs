@@ -146,22 +146,17 @@ async fn save_profile(request: SaveProfile, app: tauri::AppHandle) -> Result<Sav
         request.validate(&status.profiles, status.legacy_saved)?;
         let profile = request.metadata();
         let legacy = request.id.as_deref() == Some("legacy");
+        if request.user.is_empty() && request.pass.is_empty() && !legacy {
+            let expected = status
+                .profiles
+                .iter()
+                .find(|p| Some(&p.id) == request.id.as_ref())
+                .ok_or("This saved character no longer exists.")?;
+            vault.update_profile(expected, profile.clone())?;
+            return Ok(profile);
+        }
         let credentials = if request.user.is_empty() && request.pass.is_empty() {
-            if legacy {
-                vault.unlock_legacy()?
-            } else {
-                let expected = status
-                    .profiles
-                    .iter()
-                    .find(|p| Some(&p.id) == request.id.as_ref())
-                    .ok_or("This saved character no longer exists.")?;
-                let login = vault.unlock(&expected.id)?;
-                validate_unlocked(&login, expected)?;
-                Credentials {
-                    user: login.user,
-                    pass: login.pass,
-                }
-            }
+            vault.unlock_legacy()?
         } else {
             Credentials {
                 user: request.user,
@@ -266,7 +261,7 @@ fn send_chat(
     state.outbox.send(request)
 }
 
-/// Complement native Android visibility callbacks and replay on iOS/webview resume.
+/// Resume delivery only when both the native app and WebView are visible.
 #[tauri::command]
 fn set_chat_visible(visible: bool, control: State<'_, Arc<BackgroundControl>>) {
     control.delivery.set_visible(visible);
@@ -317,6 +312,7 @@ pub fn run() {
             support::copy_message,
             support::app_info,
             support::test_notification,
+            support::request_notification_permission,
             support::export_diagnostics,
             support::open_info_link
         ])

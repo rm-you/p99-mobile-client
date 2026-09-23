@@ -113,7 +113,18 @@ pub async fn copy_message(text: String, app: tauri::AppHandle) -> Result<(), Str
 }
 #[tauri::command]
 pub fn app_info() -> Value {
-    json!({"version":env!("CARGO_PKG_VERSION"),"build_id":env!("P99_BUILD_ID"),"network_revision":env!("P99_NETWORK_REVISION"),"platform":std::env::consts::OS,"notifications_supported":cfg!(target_os="android")})
+    json!({"version":env!("CARGO_PKG_VERSION"),"build_id":env!("P99_BUILD_ID"),"network_revision":env!("P99_NETWORK_REVISION"),"platform":std::env::consts::OS,"notifications_supported":cfg!(mobile)})
+}
+
+/// Request alert permission only in response to an explicit preference change.
+#[tauri::command]
+pub async fn request_notification_permission(app: tauri::AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<SessionService<tauri::Wry>>()
+            .request_alert_permission()
+    })
+    .await
+    .map_err(|_| "Could not request notification permission.".to_string())?
 }
 #[tauri::command]
 pub async fn export_diagnostics(app: tauri::AppHandle) -> Result<Document, String> {
@@ -183,7 +194,7 @@ mod tests {
     }
 }
 
-/// Test the Android alert channel without creating a connection, service, or wake lock.
+/// Test native alerts without creating a connection, service, or wake lock.
 #[tauri::command]
 pub async fn test_notification(app: tauri::AppHandle) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {

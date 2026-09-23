@@ -33,7 +33,7 @@ P99 uses your **EQEmulator login-server account**; Quarm uses your
 - **Reply:** swipe another player's message in either direction to send them a tell.
 - **Inspect items:** tap an item link for offline details. Quarm shows P99 reference
   stats, which may differ.
-- **Preferences:** use **Settings** for text size, optional chat history, and alerts.
+- **Preferences:** use **Settings** for text size, chat history (on by default), and optional alerts.
 
 The app tries to stay connected in the background, but Android's battery settings
 can interrupt it. Use **Disconnect** or **Stop** in the connection notification
@@ -77,10 +77,13 @@ npm run tauri -- android build
 
 ### iOS
 
-On a Mac with Xcode and the iOS prerequisites configured:
+For hosted Mac builds, unsigned device candidates, and TestFlight setup, see
+[the iOS testing guide](docs/IOS_TESTING.md). On a Mac with Xcode configured:
 
 ```sh
 npm run tauri -- ios init
+python3 scripts/prepare_ios.py
+python3 scripts/resolve_ios.py
 npm run tauri -- ios dev
 # Build a release package:
 npm run tauri -- ios build
@@ -110,9 +113,9 @@ build commands sync the committed icons into initialized Android/iOS projects.
   event delivery while the webview is hidden.
 - `src-tauri/session-service/`: Android foreground service, private connection
   notification, and native Stop control; Android/iOS copy and share controls.
-  Background-service methods remain no-ops on iOS/desktop.
+  iOS supplies native lifecycle and local alerts; persistent service support remains Android-only.
 - `src-tauri/src/settings.rs` and `experience.rs`: validated, atomic writes of nonsecret preferences.
-- `src-tauri/src/history.rs`: opt-in SQLite retention and native alert matching.
+- `src-tauri/src/history.rs`: configurable SQLite retention and native alert matching.
 - `src-tauri/src/support.rs`: bounded history exports, sharing, and sanitized diagnostics.
 - `src/Preferences.tsx`, `MessageActions.tsx`, and `useUnread.ts`: appearance, history, alerts, message actions, and unread state.
 - `src-tauri/src/items.rs`: offline item lookup and safe Wiki browser URLs.
@@ -155,7 +158,8 @@ compiled as well as Rust. A successful APK build still requires device validatio
 Secure storage implementation references:
 [Android authentication-bound keys](https://developer.android.com/identity/sign-in/biometric-auth#auth-per-use-keys)
 and [Apple Keychain access control](https://developer.apple.com/documentation/localauthentication/accessing-keychain-items-with-face-id-or-touch-id).
-The iOS implementation still requires an Xcode build and device validation.
+Hosted iOS checks compile the native plugins and exercise the Simulator app.
+Real Face ID/passcode and game-session behavior still require iPhone validation.
 
 ## License
 

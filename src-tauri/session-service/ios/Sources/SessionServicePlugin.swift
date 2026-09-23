@@ -1,10 +1,112 @@
 import Foundation
 import UIKit
+import WebKit
+import UserNotifications
 import Tauri
 
 private struct DocumentArgs: Decodable { let text: String; let format: String }
-/// Sharing is available on iOS; this plugin does not request persistent background execution.
-class SessionServicePlugin: Plugin {
+private struct SessionArgs: Decodable { let sessionId: String; let events: Channel }
+private struct AlertArgs: Decodable { let title: String; let body: String }
+private struct VisibilityEvent: Encodable { let type = "visibility"; let visible: Bool }
+
+/// Native lifecycle and local alerts; no persistent background execution is requested.
+class SessionServicePlugin: Plugin, UNUserNotificationCenterDelegate {
+    private var events: Channel?
+    private var observers: [NSObjectProtocol] = []
+
+    override func load(webview: WKWebView) {
+        UNUserNotificationCenter.current().delegate = self
+        let center = NotificationCenter.default
+        observers = [
+            center.addObserver(forName: UIApplication.willResignActiveNotification,
+                object: nil, queue: .main) { [weak self] _ in self?.visibility(false) },
+            center.addObserver(forName: UIApplication.didBecomeActiveNotification,
+                object: nil, queue: .main) { [weak self] _ in self?.visibility(true) }
+        ]
+    }
+
+    deinit {
+        for observer in observers { NotificationCenter.default.removeObserver(observer) }
+    }
+
+    private func visibility(_ visible: Bool) {
+        try? events?.send(VisibilityEvent(visible: visible))
+    }
+
+    /// Attach native visibility to Rust without starting any background task or requesting permission.
+    @objc func begin(_ invoke: Invoke) throws {
+        let args = try invoke.parseArgs(SessionArgs.self)
+        DispatchQueue.main.async {
+            self.events = args.events
+            self.visibility(UIApplication.shared.applicationState == .active)
+            invoke.resolve(["supported": false, "active": false,
+                "notifications_enabled": false, "battery_optimized": false])
+        }
+    }
+
+    /// Ask only after an explicit alert setting or test action.
+    private func authorize(_ invoke: Invoke, completion: @escaping () -> Void) {
+        let center = UNUserNotificationCenter.current()
+        center.getNotificationSettings { settings in
+            switch settings.authorizationStatus {
+            case .authorized, .provisional, .ephemeral:
+                completion()
+            case .notDetermined:
+                center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+                    if granted { completion() }
+                    else { invoke.reject("Allow notifications in device settings to receive chat alerts.") }
+                }
+            default:
+                invoke.reject("Allow notifications in device settings to receive chat alerts.")
+            }
+        }
+    }
+
+    @objc func requestAlertPermission(_ invoke: Invoke) {
+        authorize(invoke) { invoke.resolve() }
+    }
+
+    /// Automatic alerts never request permission or start a connection.
+    @objc func alertChat(_ invoke: Invoke) throws {
+        let args = try invoke.parseArgs(AlertArgs.self)
+        post(args, test: false, invoke: invoke)
+    }
+
+    @objc func testAlert(_ invoke: Invoke) throws {
+        let args = try invoke.parseArgs(AlertArgs.self)
+        authorize(invoke) { self.post(args, test: true, invoke: invoke) }
+    }
+
+    private func post(_ args: AlertArgs, test: Bool, invoke: Invoke) {
+        guard args.title.utf8.count <= 1024, args.body.utf8.count <= 8192 else {
+            invoke.reject("Notification is too large."); return
+        }
+        let center = UNUserNotificationCenter.current()
+        center.getNotificationSettings { settings in
+            guard [.authorized, .provisional, .ephemeral].contains(settings.authorizationStatus) else {
+                invoke.reject("Allow notifications in device settings to receive chat alerts."); return
+            }
+            let content = UNMutableNotificationContent()
+            content.title = args.title
+            content.body = args.body
+            content.sound = .default
+            content.threadIdentifier = "p99-chat"
+            let identifier = test ? "p99-test" : "p99-chat"
+            // Reuse IDs to bound notification-center accumulation; SQLite retains chat history.
+            let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
+            center.add(request) { error in
+                if error == nil { invoke.resolve() }
+                else { invoke.reject("Could not display the notification.") }
+            }
+        }
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler(notification.request.identifier == "p99-test" ? [.banner, .sound] : [])
+    }
+
     @objc func copyText(_ invoke: Invoke) {
         do {
             let args = try invoke.parseArgs(DocumentArgs.self)

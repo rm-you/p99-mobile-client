@@ -13,8 +13,8 @@ No Play Store installation or project account is required.
 3. Log out of the graphical game client, open **P99 Mobile Chat**, and use
    **New connection** to enter your account, password, server, and character.
 4. Choose whether to save the login when prompted. Android device authentication
-   must be configured to use protected saved logins. Saving chat history and
-   enabling message alerts are separate, optional Settings choices.
+   must be configured to use protected saved logins. Chat history is saved by
+   default and can be turned off in Settings. Message alerts are optional.
 
 Use **Disconnect** or the connection notification's **Stop** action for a clean
 logout. Force-stopping or losing the process can leave the game's login timeout

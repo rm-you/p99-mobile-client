@@ -1,0 +1,88 @@
+name: iOS checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  simulator:
+    runs-on: macos-26
+    timeout-minutes: 45
+    concurrency:
+      group: ios-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/cache/restore@v6
+        id: rust-cache
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ios-${{ runner.arch }}-xcode26-${{ hashFiles('rust-toolchain.toml', 'src-tauri/Cargo.lock', 'package-lock.json') }}-${{ github.sha }}
+          restore-keys: |
+            ios-${{ runner.arch }}-xcode26-${{ hashFiles('rust-toolchain.toml', 'src-tauri/Cargo.lock', 'package-lock.json') }}-
+      - name: Install build prerequisites
+        run: |
+          xcodebuild -version
+          rustup target add aarch64-apple-ios aarch64-apple-ios-sim
+          command -v xcodegen || brew install xcodegen
+          npm ci
+          npm run format:check
+          npm test
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+      - name: Build complete Simulator application
+        id: build-simulator
+        run: |
+          npm run tauri -- ios init --ci
+          python3 scripts/prepare_ios.py --simulator
+          python3 scripts/resolve_ios.py
+          swift package --package-path src-tauri/secure-login/ios dump-package > /dev/null
+          swift package --package-path src-tauri/session-service/ios dump-package > /dev/null
+          npm run tauri -- ios build --ci --target aarch64-sim --no-sign
+      - name: Launch the packaged app
+        run: python3 scripts/ios_smoke.py
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ios-simulator-${{ github.sha }}
+          path: ios-test-output/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Build unsigned device candidate
+        id: build-device
+        if: ${{ !cancelled() && steps.build-simulator.outcome == 'success' }}
+        run: |
+          python3 scripts/resolve_ios.py
+          npm run tauri -- ios build --ci --target aarch64 --no-sign
+          git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
+          ipa=(src-tauri/gen/apple/build/arm64/*.ipa)
+          test "${#ipa[@]}" -eq 1
+          python3 scripts/verify_ios.py "${ipa[0]}"
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() && steps.build-device.outcome == 'success' }}
+        with:
+          name: ios-unsigned-device-${{ github.sha }}
+          path: src-tauri/gen/apple/build/arm64/*.ipa
+          if-no-files-found: error
+          retention-days: 7
+      - name: Preserve compiled dependencies even if a later check fails
+        uses: actions/cache/save@v6
+        if: ${{ !cancelled() && steps.rust-cache.outputs.cache-hit != 'true' }}
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ steps.rust-cache.outputs.cache-primary-key }}

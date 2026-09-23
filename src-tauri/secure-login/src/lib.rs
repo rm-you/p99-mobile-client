@@ -13,7 +13,7 @@ pub enum Server {
 }
 
 /// These labels may be shown while the account credentials remain locked.
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SavedProfile {
     pub id: String,
@@ -57,6 +57,37 @@ pub struct SecureLogin<R: Runtime> {
 }
 
 impl<R: Runtime> SecureLogin<R> {
+    /// Retain an existing login while updating its label under one authorization.
+    pub fn update_profile(
+        &self,
+        expected: &SavedProfile,
+        profile: SavedProfile,
+    ) -> Result<(), String> {
+        #[cfg(target_os = "ios")]
+        {
+            #[derive(Serialize)]
+            struct Edit<'a> {
+                expected: &'a SavedProfile,
+                profile: SavedProfile,
+            }
+            self.handle
+                .run_mobile_plugin("updateProfile", Edit { expected, profile })
+                .map_err(|_| "Character was not saved. Unlock your device and try again.".into())
+        }
+        #[cfg(not(target_os = "ios"))]
+        {
+            let login = self.unlock(&expected.id)?;
+            if &login.profile != expected || profile.id != expected.id {
+                return Err("Saved character details do not match the protected login.".into());
+            }
+            self.save(ProfileLogin {
+                profile,
+                user: login.user,
+                pass: login.pass,
+            })
+        }
+    }
+
     /// List character/server labels without unlocking any stored credentials.
     pub fn status(&self) -> Result<VaultStatus, String> {
         #[cfg(mobile)]

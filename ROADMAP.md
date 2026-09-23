@@ -29,7 +29,7 @@ offer to save when a manual connection starts; tap a saved character to unlock
 and connect; edit/delete controls and swipe-to-delete confirmation; migration from
 the previous single-login entry; reconnect without repeated unlock prompts.
 Confirmed credential rejections stop retries and show an actionable error. Manual
-character names are not restored into the form. Opt-in chat history is also indexed by character and server.
+character names are not restored into the form. Configurable chat history is also indexed by character and server.
 No plaintext credential storage or decrypted password return to the webview.
 
 Validation:
@@ -121,13 +121,13 @@ The menu supports copy, native sharing, reply, and mute; own messages read **You
 and offer copy/share without self-reply gestures or actions.
 
 Implemented: explicit tell destinations; per-message pending, sent, failed, and
-unconfirmed icons; self-tell receive/confirmation pairing for display; reconnect timeline notices; opt-in per-character SQLite history with
+unconfirmed icons; self-tell receive/confirmation pairing for display; reconnect timeline notices; configurable per-character SQLite history with
 age/count limits; restart loading, clear confirmation, and text/JSONL exports.
 The complete structured item-link data is preserved. Muting does not destroy history.
 
-Implemented: optional native Android tell, guild, and keyword alerts with private
-lock-screen notices and optional previews. iOS provides copy/share controls, but
-no chat alerts or persistent background service. About provides version/build
+Implemented: optional native tell, guild, and keyword alerts with private
+lock-screen notices and optional previews. iOS provides copy/share controls,
+local alerts, and native visibility events; it has no persistent background service. About provides version/build
 information, credits, source links, and sanitized diagnostic exports.
 
 Validation: synthetic frontend and Rust tests cover history isolation/retention,
@@ -135,7 +135,8 @@ settings migration, notification matching/privacy, export structure, message
 actions, unread filtering, and send-echo correlation. Platform packaging and
 emulator checks are recorded separately from live P99 or physical-device tests.
 Remaining: physical Android notification/lock-screen and accessibility checks;
-Xcode build and real iOS sharing, appearance, and device-lifecycle validation.
+real iOS sharing, appearance, and device-lifecycle validation. The complete iOS
+application and both Swift plugins compile on the hosted Xcode runner.
 
 ## 6. Direct Android 1.0 release
 

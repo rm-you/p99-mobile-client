@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Add iOS native lifecycle events, opt-in local chat notifications, and a single
+  Keychain authorization for edits that retain account credentials.
+- Add hosted iOS Simulator checks, unsigned device candidates, and a manually
+  triggered TestFlight workflow. Physical iPhone validation remains required.
+- Bring the iOS candidate onto the shared eq-network dependency and allow signed
+  uploads with an encryption declaration pending in App Store Connect.
+
+- Save chat on this device by default when no saved history preference exists,
+  with the existing seven-day and 5,000-message per-character/server limits.
+  Preserve saved on/off choices when upgrading; alerts remain off by default.
+
 ## P99 Mobile Chat 1.1.0
 
 - Show pending/sent indicators on each outgoing message, combine self-tell

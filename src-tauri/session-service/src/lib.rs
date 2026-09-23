@@ -30,7 +30,7 @@ pub enum ConnectionNotice {
 pub struct SessionService<R: Runtime> {
     #[cfg(mobile)]
     handle: tauri::plugin::PluginHandle<R>,
-    #[cfg(target_os = "android")]
+    #[cfg(mobile)]
     events: tauri::ipc::Channel<serde_json::Value>,
     #[cfg(not(mobile))]
     marker: std::marker::PhantomData<fn() -> R>,
@@ -55,25 +55,36 @@ impl<R: Runtime> SessionService<R> {
     }
     /// Alerts originate on the native worker, independent of suspended JavaScript.
     pub fn alert_chat(&self, title: &str, body: &str) {
-        #[cfg(target_os = "android")]
+        #[cfg(mobile)]
         let _: Result<(), _> = self
             .handle
             .run_mobile_plugin("alertChat", serde_json::json!({"title":title,"body":body}));
-        #[cfg(not(target_os = "android"))]
+        #[cfg(not(mobile))]
         let _ = (title, body);
     }
 
     /// An explicit settings action tests notification permission without starting a session.
     pub fn test_alert(&self) -> Result<(), String> {
-        #[cfg(target_os = "android")]
-        return self.handle.run_mobile_plugin("testAlert", serde_json::json!({"title":"P99 Mobile Chat", "body":"Test notification. Chat alerts are ready."})).map_err(|_| "Allow notifications in Android settings to receive chat alerts.".into());
-        #[cfg(not(target_os = "android"))]
-        Err("Chat notifications are currently available on Android.".into())
+        #[cfg(mobile)]
+        return self.handle.run_mobile_plugin("testAlert", serde_json::json!({"title":"P99 Mobile Chat", "body":"Test notification. Chat alerts are ready."})).map_err(|_| "Allow notifications in device settings to receive chat alerts.".into());
+        #[cfg(not(mobile))]
+        Err("Chat notifications are available in the mobile app.".into())
+    }
+
+    /// iOS asks on an explicit alert preference; Android already asks when starting a session.
+    pub fn request_alert_permission(&self) -> Result<(), String> {
+        #[cfg(target_os = "ios")]
+        return self
+            .handle
+            .run_mobile_plugin("requestAlertPermission", ())
+            .map_err(|_| "Allow notifications in device settings to receive chat alerts.".into());
+        #[cfg(not(target_os = "ios"))]
+        Ok(())
     }
 
     /// Start only for an explicit login; no credentials or character labels cross this API.
     pub fn begin(&self, session_id: &str) -> Result<BackgroundStatus, String> {
-        #[cfg(target_os = "android")]
+        #[cfg(mobile)]
         return self
             .handle
             .run_mobile_plugin(
@@ -83,7 +94,7 @@ impl<R: Runtime> SessionService<R> {
                 }),
             )
             .map_err(|_| "Background connection support is unavailable.".into());
-        #[cfg(not(target_os = "android"))]
+        #[cfg(not(mobile))]
         {
             let _ = session_id;
             Ok(BackgroundStatus::default())
@@ -131,7 +142,7 @@ pub fn init<R: Runtime>(control: impl Fn(ControlEvent) + Send + Sync + 'static) 
             )?;
             #[cfg(target_os = "ios")]
             let handle = _api.register_ios_plugin(init_plugin_session_service)?;
-            #[cfg(target_os = "android")]
+            #[cfg(mobile)]
             let events = tauri::ipc::Channel::new(move |body| {
                 if let tauri::ipc::InvokeResponseBody::Json(json) = body {
                     if let Ok(event) = serde_json::from_str(&json) {
@@ -140,12 +151,12 @@ pub fn init<R: Runtime>(control: impl Fn(ControlEvent) + Send + Sync + 'static) 
                 }
                 Ok(())
             });
-            #[cfg(not(target_os = "android"))]
+            #[cfg(not(mobile))]
             let _ = control;
             app.manage(SessionService::<R> {
                 #[cfg(mobile)]
                 handle,
-                #[cfg(target_os = "android")]
+                #[cfg(mobile)]
                 events,
                 #[cfg(not(mobile))]
                 marker: std::marker::PhantomData,

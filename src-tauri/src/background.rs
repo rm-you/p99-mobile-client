@@ -26,7 +26,7 @@ impl BackgroundControl {
                     }
                 }
             }
-            ControlEvent::Visibility { visible } => self.delivery.set_visible(visible),
+            ControlEvent::Visibility { visible } => self.delivery.set_native_visible(visible),
         }
     }
 }
@@ -53,7 +53,7 @@ impl BackgroundSession {
             .state::<SessionService<tauri::Wry>>()
             .begin(&id)
             .unwrap_or(BackgroundStatus {
-                supported: true,
+                supported: cfg!(target_os = "android"),
                 ..BackgroundStatus::default()
             });
         control.delivery.publish(AppEvent::Background(status));

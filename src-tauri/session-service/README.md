@@ -53,8 +53,9 @@ live game connection uses more battery than push messaging. See
 [Doze and App Standby](https://developer.android.com/training/monitoring-device-state/doze-standby).
 
 iOS has no general-purpose equivalent for an indefinitely running chat socket.
-Background-service methods are no-ops on iOS and desktop. A separate iOS native
-implementation provides clipboard and share-sheet operations only. The existing iOS best-effort connection and retry behavior remain, with
+The iOS native implementation provides visibility events, local notifications,
+clipboard and sharing, without requesting persistent background execution.
+The existing iOS best-effort connection and retry behavior remain, with
 bounded retention during webview suspension. iOS can suspend the whole process,
 so packets cannot be collected continuously after that point. Background tasks
 and silent notifications do not provide an always-on socket. Reliable delivery
@@ -78,8 +79,9 @@ in the emulator. CI also builds the ARM64 APK to compile native Kotlin changes.
 Test Doze on an emulator or test device with `adb shell dumpsys deviceidle force-idle`;
 restore it with `adb shell dumpsys deviceidle unforce` and
 `adb shell dumpsys battery reset`. Verify recovery instead of assuming the service
-bypasses idle restrictions. Physical-device battery behavior and an iOS/Xcode
-build require separate validation.
+bypasses idle restrictions. Physical-device battery behavior requires separate
+validation. Hosted Xcode/Simulator checks are described in
+[the iOS testing guide](../../docs/IOS_TESTING.md).
 
 For keyboard layout, check the actual device display with the soft keyboard
 visible, including a multiline draft and a tell recipient. The composer must
@@ -103,4 +105,5 @@ buffering. Android posts them on the separate **Chat messages** notification
 channel, with a generic lock-screen public version. Alert generation does not
 start a service, wake up a disconnected client, or reconnect a character. Only an
 explicit login starts the existing foreground service. iOS does not implement
-chat alerts in this version.
+a persistent background service; local alerts can be delivered only while the
+process is executing. Permission is requested on explicit opt-in or testing.
