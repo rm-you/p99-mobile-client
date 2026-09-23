@@ -77,10 +77,13 @@ of Android signing and does not require a public App Store release.
    encrypted backup of the signing material.
 3. Create an App Store Connect API key with upload access. Download its `.p8` key
    once and retain it privately. Record its key ID and issuer ID.
-4. Answer Apple's encryption questions for this app. It uses OS secure storage
-   and legacy login cryptography in the Rust networking dependency, so do not
-   assume that it uses only OS-provided encryption. Set the configuration below
-   to the result of that assessment and provide any documentation Apple requests.
+4. Complete Apple's encryption declaration before distributing a build to testers.
+   The app uses OS secure storage and legacy cryptography in the Rust networking
+   dependency. Leave the encryption variable unset while the assessment is pending:
+   uploads then omit both the exemption claim and any compliance approval code.
+   Answer the questions for the uploaded build in App Store Connect and provide
+   any required documentation. An upload can remain in Missing Compliance until
+   this is resolved; successful upload does not mean it is available for testing.
 5. Create the protected GitHub environment **ios-testflight**. Restrict allowed
    branches/tags to reviewed release sources and require approval if desired.
 
@@ -89,7 +92,7 @@ of Android signing and does not require a public App Store release.
 | `APPLE_DEVELOPMENT_TEAM` | Variable | Apple team identifier |
 | `APPLE_API_ISSUER` | Variable | App Store Connect issuer identifier |
 | `APPLE_API_KEY` | Variable | API key identifier |
-| `IOS_USES_NON_EXEMPT_ENCRYPTION` | Variable | Explicit `true` or `false` from the encryption assessment |
+| `IOS_USES_NON_EXEMPT_ENCRYPTION` | Variable | Leave unset while pending; otherwise explicit `true` or `false` from the encryption assessment |
 | `APPLE_API_KEY_CONTENT` | Secret | Entire `.p8` private key |
 | `IOS_CERTIFICATE` | Secret | Base64-encoded signing PKCS#12 file |
 | `IOS_CERTIFICATE_PASSWORD` | Secret | PKCS#12 password |
@@ -108,9 +111,12 @@ iOS bundle build number only; it does not publish an Android release or move a t
 
 The workflow validates the environment, builds with distribution signing, checks
 the IPA's identity/resources/entitlements, validates it with Apple, and uploads it.
-It intentionally stops if signing or encryption configuration is incomplete.
-After Apple processes the upload, assign it to an internal TestFlight group and
-install it on the iPhone. External testers may require beta review. TestFlight
+It stops if signing configuration is incomplete or an encryption value is invalid.
+It preserves the app's Face ID permission text and verifies that the IPA contains
+the configured declaration, or no declaration when the answer is pending.
+After Apple processes the upload and its encryption requirements are resolved,
+assign it to an internal TestFlight group and install it on the iPhone.
+External testers may require beta review. TestFlight
 builds expire after 90 days.
 
 Sources: [Tauri iOS signing](https://v2.tauri.app/distribute/sign/ios/),

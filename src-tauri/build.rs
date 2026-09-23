@@ -7,7 +7,7 @@ fn main() {
     let lock = std::fs::read_to_string("Cargo.lock").unwrap_or_default();
     let revision = lock
         .lines()
-        .find(|line| line.contains("github.com/rm-you/p99-logger-client?"))
+        .find(|line| line.contains("github.com/eq-p99-tools/eq-network?"))
         .and_then(|line| line.split('#').nth(1))
         .map(|line| line.trim_end_matches('"'))
         .unwrap_or("unknown");

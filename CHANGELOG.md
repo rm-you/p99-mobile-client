@@ -6,6 +6,8 @@
   Keychain authorization for edits that retain account credentials.
 - Add hosted iOS Simulator checks, unsigned device candidates, and a manually
   triggered TestFlight workflow. Physical iPhone validation remains required.
+- Bring the iOS candidate onto the shared eq-network dependency and allow signed
+  uploads with an encryption declaration pending in App Store Connect.
 
 - Save chat on this device by default when no saved history preference exists,
   with the existing seven-day and 5,000-message per-character/server limits.

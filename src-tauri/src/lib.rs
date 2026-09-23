@@ -58,7 +58,7 @@ fn start_session(
             if let AppEvent::Client(ref message) = event {
                 let store=history_app.state::<history::ChatStore>();
                 match message {
-                    p99_logger_client::client::ClientEvent::Record(record) => {
+                    eq_network::client::ClientEvent::Record(record) => {
                         if let Ok(value)=serde_json::to_value(record) {
                             match store.record(&owner, &value, delivery.delivery.is_hidden()) {
                                 Ok(recorded) => {
@@ -71,7 +71,7 @@ fn start_session(
                             }
                         }
                     }
-                    p99_logger_client::client::ClientEvent::Reconnecting{..}=>store.reconnect(),
+                    eq_network::client::ClientEvent::Reconnecting{..}=>store.reconnect(),
                     _=>{}
                 }
             }

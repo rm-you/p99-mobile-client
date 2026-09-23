@@ -8,7 +8,7 @@ import tempfile
 import zipfile
 
 
-def verify(path, build_number=None, signed=False):
+def verify(path, build_number=None, signed=False, encryption=None):
     with zipfile.ZipFile(path) as archive:
         infos = [n for n in archive.namelist() if n.startswith("Payload/")
                  and n.count("/") == 2 and n.endswith(".app/Info.plist")]
@@ -24,6 +24,14 @@ def verify(path, build_number=None, signed=False):
             raise ValueError("Unexpected iOS build number")
         if not info.get("NSFaceIDUsageDescription"):
             raise ValueError("Face ID purpose string is missing")
+        if encryption == "":
+            if "ITSAppUsesNonExemptEncryption" in info or "ITSEncryptionExportComplianceCode" in info:
+                raise ValueError("Pending encryption declaration must not make a compliance claim")
+        elif encryption in ("true", "false"):
+            if info.get("ITSAppUsesNonExemptEncryption") is not (encryption == "true"):
+                raise ValueError("Packaged encryption declaration does not match the configured answer")
+        elif encryption is not None:
+            raise ValueError("Invalid encryption declaration")
         if root + "/PrivacyInfo.xcprivacy" not in archive.namelist():
             raise ValueError("App privacy manifest is missing")
         executable = root + "/" + info["CFBundleExecutable"]
@@ -56,5 +64,6 @@ if __name__ == "__main__":
     parser.add_argument("ipa", type=Path)
     parser.add_argument("--build-number")
     parser.add_argument("--signed", action="store_true")
+    parser.add_argument("--encryption", choices=("", "true", "false"))
     args = parser.parse_args()
-    verify(args.ipa, args.build_number, args.signed)
+    verify(args.ipa, args.build_number, args.signed, args.encryption)

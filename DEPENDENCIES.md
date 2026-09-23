@@ -16,7 +16,7 @@ bundled in [THIRD-PARTY-NOTICES.txt](public/THIRD-PARTY-NOTICES.txt).
 | Tauri opener plugin | Explicit browser links | [MIT or Apache-2.0](https://github.com/tauri-apps/plugins-workspace#license) |
 | rusqlite | Item queries and local chat history | [MIT](https://github.com/rusqlite/rusqlite/blob/master/LICENSE) |
 | SQLite | Embedded database engine | [Public domain](https://sqlite.org/copyright.html) |
-| Rust P99 client | Login, world/zone connections, and chat protocol | [Source and notices](https://github.com/rm-you/p99-logger-client) |
+| eq-network | Login, world/zone connections, and chat protocol | [Source and notices](https://github.com/eq-p99-tools/eq-network) |
 | AndroidX | Android UI, device authentication, and file sharing | [Source and notices](https://android.googlesource.com/platform/frameworks/support/) |
 
 Rust dependencies are recorded in `src-tauri/Cargo.lock`; JavaScript dependencies

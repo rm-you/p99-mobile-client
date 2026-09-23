@@ -2,7 +2,7 @@ use crate::{
     delivery::EventDelivery,
     session::{AppEvent, SessionObserver},
 };
-use p99_logger_client::client::{CancellationToken, ClientEvent, ConnectionStage};
+use eq_network::client::{CancellationToken, ClientEvent, ConnectionStage};
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
 use tauri_plugin_session_service::{

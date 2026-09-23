@@ -1,5 +1,5 @@
-use p99_logger_client::{
-    chat::OutboundChat,
+use eq_network::{
+    chat::{self, OutboundChat},
     client::{CancellationToken, ClientCommand, ClientEvent, ConnectionState, ServerProtocol},
 };
 use serde::{Deserialize, Serialize};
@@ -8,10 +8,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-// Match the protocol-specific wire limits in the networking crate. Its encoder
-// is private, so validate here to return useful errors before enqueueing a command.
-const MAX_MESSAGE_BYTES: usize = 4095;
-const MAX_QUARM_MESSAGE_BYTES: usize = 2043;
 const QUEUE_SIZE: usize = 8;
 
 /// Only channels supported by this app are accepted across the UI boundary.
@@ -53,13 +49,9 @@ impl ChatMessage {
             if value.is_empty() || value.chars().any(char::is_control) {
                 return Err(SendFailure::InvalidMessage);
             }
-            let (wire_len, limit) = match protocol {
-                ServerProtocol::Project1999 => (
-                    value.len() + value.bytes().filter(|&b| b == b'%').count() * 4,
-                    MAX_MESSAGE_BYTES,
-                ),
-                ServerProtocol::Quarm => (value.len(), MAX_QUARM_MESSAGE_BYTES),
-            };
+            let dialect = protocol.into();
+            let wire_len = chat::outbound_text_len(dialect, value);
+            let limit = chat::outbound_text_limit(dialect);
             if wire_len > limit {
                 return Err(SendFailure::MessageTooLong);
             }
@@ -187,18 +179,16 @@ impl Drop for CommandInbox {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use p99_logger_client::client::SessionStatus;
+    use eq_network::client::SessionStatus;
 
     fn status(state: ConnectionState, id: &str) -> ClientEvent {
-        ClientEvent::Status(SessionStatus {
-            state,
-            timestamp: 0,
-            session_id: id.into(),
-            zone: "example".into(),
-            messages: 0,
-            packets: 1,
-            last_received_seconds: Some(0),
-        })
+        ClientEvent::Status(
+            SessionStatus::new(state, id)
+                .with_timestamp(0)
+                .with_zone("example")
+                .with_counters(0, 1)
+                .with_last_received(Some(0)),
+        )
     }
     fn request(id: &str) -> SendChatRequest {
         SendChatRequest {
