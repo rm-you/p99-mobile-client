@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## P99 Mobile Chat 1.1.1 (2026-09-24)
+
 - Open spell and bard song scrolls on their spell pages in the P99 Wiki.
 - Keep iOS saved-character labels in a separate device-only Keychain index, with
   explicit unlock recovery for existing entries and interrupted saves.
