@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Open spell and bard song scrolls on their spell pages in the P99 Wiki.
 - Keep iOS saved-character labels in a separate device-only Keychain index, with
   explicit unlock recovery for existing entries and interrupted saves.
 - Add a password visibility toggle and hide the redundant healthy-connection footer.

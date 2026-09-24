@@ -24,10 +24,16 @@ pub fn lookup(item_id: u32, name: &str) -> Result<ItemDetails, String> {
         .lookup(item_id, name)
 }
 
-/// Keep the explicit browser action confined to an encoded P99 Wiki article path.
+/// Map scroll labels to spell articles and keep browser actions on the P99 Wiki.
 pub fn page_url(name: &str) -> Result<String, String> {
     let name = name.trim();
-    if name.is_empty()
+    // The Wiki omits the scroll prefix, but colons inside spell names are significant.
+    let title = name
+        .strip_prefix("Spell:")
+        .or_else(|| name.strip_prefix("Song:"))
+        .unwrap_or(name)
+        .trim_start();
+    if title.is_empty()
         || name.len() > 256
         || name
             .chars()
@@ -38,13 +44,40 @@ pub fn page_url(name: &str) -> Result<String, String> {
     let mut url = Url::parse("https://wiki.project1999.com").map_err(|_| "Invalid Wiki address")?;
     url.path_segments_mut()
         .map_err(|_| "Invalid Wiki address")?
-        .push(&name.replace(' ', "_"));
+        .push(&title.replace(' ', "_"));
     Ok(url.into())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scrolls_link_to_spell_articles_without_changing_other_titles() {
+        for (name, article) in [
+            ("Spell: Gate", "Gate"),
+            (" Spell: Complete Healing ", "Complete_Healing"),
+            (
+                "Song: Cassindra's Chant of Clarity",
+                "Cassindra's_Chant_of_Clarity",
+            ),
+            (
+                "Spell: Lesser Conjuration: Earth",
+                "Lesser_Conjuration:_Earth",
+            ),
+            ("Flowing Black Silk Sash", "Flowing_Black_Silk_Sash"),
+            ("Spellbook", "Spellbook"),
+        ] {
+            assert_eq!(
+                page_url(name).unwrap(),
+                format!("https://wiki.project1999.com/{article}")
+            );
+        }
+        for name in ["Spell:", "Song:   "] {
+            assert!(page_url(name).is_err());
+        }
+    }
+
     #[test]
     fn article_names_cannot_change_the_destination() {
         for name in [
@@ -52,6 +85,8 @@ mod tests {
             "https://evil.test/",
             "An Item/Variant",
             "A's & B's",
+            "Spell: https://evil.test/",
+            "Song: ../api.php?token=x",
         ] {
             let url = Url::parse(&page_url(name).unwrap()).unwrap();
             assert_eq!(url.host_str(), Some("wiki.project1999.com"));
